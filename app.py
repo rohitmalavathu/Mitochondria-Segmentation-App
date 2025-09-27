@@ -195,6 +195,8 @@ def upload_file():
     
     print(f"Content-Length header: {request.headers.get('Content-Length', 'Not set')}")
     print(f"Content-Type header: {request.headers.get('Content-Type', 'Not set')}")
+    print(f"Request method: {request.method}")
+    print(f"Request content length: {request.content_length}")
     
     if 'file' not in request.files:
         return jsonify({'error': 'No file provided'}), 400

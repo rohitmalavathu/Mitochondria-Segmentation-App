@@ -526,10 +526,14 @@
 
                 // Check file size (100MB limit)
                 const maxSize = 100 * 1024 * 1024; // 100MB in bytes
+                const fileSizeMB = (file.size / (1024 * 1024)).toFixed(1);
+                
                 if (file.size > maxSize) {
-                    alert('File too large! Maximum size is 100MB. Please compress your image or use a smaller file.');
+                    alert(`File too large! Your file is ${fileSizeMB}MB, but the maximum size is 100MB.\n\nPlease compress your TIFF file using:\n- ImageJ/Fiji (File > Export > PNG)\n- Photoshop (Save As > PNG)\n- Online tools like tinypng.com\n- Or reduce the resolution`);
                     return;
                 }
+                
+                console.log(`File size: ${fileSizeMB}MB`);
 
                 // If it's a TIFF file, try to compress it client-side
                 if (file.name.toLowerCase().endsWith('.tif') || file.name.toLowerCase().endsWith('.tiff')) {
