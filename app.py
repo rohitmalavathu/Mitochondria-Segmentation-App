@@ -209,6 +209,8 @@ def upload_file():
         file = request.files['file']
         print(f"File received: {file.filename}, content type: {file.content_type}")
         print(f"File size: {file.content_length if hasattr(file, 'content_length') else 'Unknown'}")
+        print(f"File stream: {file.stream}")
+        print(f"File read position: {file.stream.tell() if hasattr(file.stream, 'tell') else 'N/A'}")
         
         if file.filename == '':
             print("ERROR: Empty filename")
@@ -246,38 +248,76 @@ def upload_file():
             
             try:
                 print(f"Saving file to: {filepath}")
+                print(f"File extension: {file_extension}")
+                print(f"Is TIFF file: {file_extension.lower() in ['.tif', '.tiff']}")
                 file.save(filepath)
                 print(f"File saved successfully: {filename}")
+                
+                # Check if file was actually saved
+                if os.path.exists(filepath):
+                    file_size = os.path.getsize(filepath)
+                    print(f"Saved file size: {file_size} bytes")
+                else:
+                    print("ERROR: File was not saved!")
+                    return jsonify({'error': 'File was not saved'}), 500
+                    
             except Exception as e:
                 print(f"ERROR saving file: {e}")
+                import traceback
+                traceback.print_exc()
                 return jsonify({'error': f'Failed to save file: {str(e)}'}), 500
             
             # Load and process image
+            print(f"Attempting to load image with OpenCV: {filepath}")
             image = cv2.imread(filepath)
+            print(f"OpenCV load result: {image is not None}")
+            
             if image is None:
+                print("OpenCV failed to load image, trying PIL...")
                 # Try with PIL for TIFF and other formats that OpenCV might not support
                 try:
+                    print(f"Opening with PIL: {filepath}")
                     pil_image = Image.open(filepath)
                     print(f"PIL loaded image: {file.filename}, mode: {pil_image.mode}, size: {pil_image.size}")
+                    print(f"PIL image format: {pil_image.format}")
                     
                     # If it's a TIFF file, convert to PNG to reduce file size
                     if file_extension.lower() in ['.tif', '.tiff']:
                         print("Converting TIFF to PNG to reduce file size...")
+                        print(f"Original PIL image mode: {pil_image.mode}")
+                        
                         # Convert to RGB if needed
                         if pil_image.mode != 'RGB':
+                            print(f"Converting from {pil_image.mode} to RGB")
                             pil_image = pil_image.convert('RGB')
+                            print(f"Converted to RGB, new mode: {pil_image.mode}")
                         
                         # Save as PNG temporarily
                         png_filename = filename.replace(file_extension, '.png')
                         png_filepath = os.path.join(app.config['UPLOAD_FOLDER'], png_filename)
-                        pil_image.save(png_filepath, 'PNG', optimize=True)
+                        print(f"Saving PNG to: {png_filepath}")
+                        
+                        try:
+                            pil_image.save(png_filepath, 'PNG', optimize=True)
+                            print(f"PNG saved successfully: {png_filename}")
+                            
+                            # Check PNG file size
+                            if os.path.exists(png_filepath):
+                                png_size = os.path.getsize(png_filepath)
+                                print(f"PNG file size: {png_size} bytes")
+                            
+                        except Exception as e:
+                            print(f"ERROR saving PNG: {e}")
+                            import traceback
+                            traceback.print_exc()
+                            return jsonify({'error': f'Failed to convert TIFF to PNG: {str(e)}'}), 500
                         
                         # Clean up original TIFF file
                         try:
                             os.remove(filepath)
                             print(f"Removed original TIFF file: {filename}")
-                        except:
-                            pass
+                        except Exception as e:
+                            print(f"Warning: Could not remove original TIFF file: {e}")
                         
                         # Update filepath to use the PNG version
                         filepath = png_filepath
