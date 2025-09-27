@@ -359,10 +359,16 @@ def upload_file():
         
         # Encode image for frontend
         try:
+            print(f"Creating PIL image from array, shape: {display_image.shape}")
             pil_image = Image.fromarray(display_image)
+            print(f"PIL image created, mode: {pil_image.mode}, size: {pil_image.size}")
+            
             buffer = BytesIO()
             pil_image.save(buffer, format='PNG')
+            print(f"Image saved to buffer, buffer size: {buffer.tell()}")
+            
             img_str = base64.b64encode(buffer.getvalue()).decode()
+            print(f"Image encoded to base64, length: {len(img_str)}")
             print(f"Successfully encoded image for frontend")
         except Exception as e:
             print(f"Error encoding image: {e}")
@@ -370,7 +376,7 @@ def upload_file():
             traceback.print_exc()
             return jsonify({'error': 'Error encoding image for display'}), 500
         
-        return jsonify({
+        response_data = {
             'success': True,
             'image': img_str,
             'original_shape': image.shape,
@@ -379,7 +385,20 @@ def upload_file():
             'scale_factor': scale_factor,
             'image_offset': {'x': start_x, 'y': start_y},
             'image_size': {'width': new_width, 'height': new_height}
-        })
+        }
+        
+        print(f"Creating JSON response with keys: {list(response_data.keys())}")
+        print(f"Image data length in response: {len(response_data['image'])}")
+        
+        try:
+            response = jsonify(response_data)
+            print(f"JSON response created successfully")
+            return response
+        except Exception as e:
+            print(f"Error creating JSON response: {e}")
+            import traceback
+            traceback.print_exc()
+            return jsonify({'error': 'Error creating response'}), 500
     
     except Exception as e:
         print(f"ERROR in upload_file: {e}")

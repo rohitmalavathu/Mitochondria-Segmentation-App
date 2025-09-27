@@ -542,8 +542,16 @@
 
                     let data;
                     const responseText = await response.text();
+                    console.log('Response status:', response.status);
+                    console.log('Response headers:', Object.fromEntries(response.headers.entries()));
                     console.log('Raw response text length:', responseText.length);
-                    console.log('Response text preview:', responseText.substring(0, 200));
+                    console.log('Response text preview:', responseText.substring(0, 500));
+                    
+                    if (!response.ok) {
+                        console.error('Server returned error status:', response.status);
+                        console.log('Error response:', responseText);
+                        throw new Error(`Server error: ${response.status} - ${responseText.substring(0, 200)}`);
+                    }
                     
                     try {
                         data = JSON.parse(responseText);
