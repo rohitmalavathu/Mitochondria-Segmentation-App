@@ -577,7 +577,12 @@
                 this.canvas.addEventListener('mouseup', (e) => this.handleMouseUp(e));
                 
                 // Action buttons
-                this.processBtn.addEventListener('click', () => this.processSegmentation());
+                this.processBtn.addEventListener('click', () => {
+                    console.log('Process button clicked, disabled:', this.processBtn.disabled);
+                    if (!this.processBtn.disabled) {
+                        this.processSegmentation();
+                    }
+                });
                 this.clearBtn.addEventListener('click', () => this.clearAll());
                 this.undoBtn.addEventListener('click', () => this.undoLast());
                 
@@ -647,7 +652,8 @@
                         
                         this.updateLoadingProgress('Complete!', 100);
                         setTimeout(() => this.hideLoading(), 500);
-                        console.log('File uploaded successfully!');
+                        this.processBtn.disabled = false;
+                        console.log('File uploaded successfully! Process button enabled:', !this.processBtn.disabled);
                     } else {
                         throw new Error(data.error || 'Upload failed');
                     }
@@ -738,7 +744,8 @@
                         
                         this.updateLoadingProgress('Complete!', 100);
                         setTimeout(() => this.hideLoading(), 500);
-                        console.log('File uploaded and assembled successfully!');
+                        this.processBtn.disabled = false;
+                        console.log('File uploaded and assembled successfully! Process button enabled:', !this.processBtn.disabled);
                     } else {
                         throw new Error(data.error || 'Failed to assemble file');
                     }
