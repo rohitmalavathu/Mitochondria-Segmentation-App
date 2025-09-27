@@ -1,6 +1,8 @@
 import cv2
 import numpy as np
 from scipy.ndimage import gaussian_filter
+from sam2.build_sam import build_sam2
+from sam2.sam2_image_predictor import SAM2ImagePredictor
 import torch
 from flask import Flask, request, jsonify, render_template
 from werkzeug.utils import secure_filename
@@ -24,7 +26,6 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 sam2_model = None
 predictor = None
 model_loaded = False
-model_loading_error = None
 
 def load_model():
     """Load the SAM2 model and fine-tuned weights"""
@@ -35,42 +36,13 @@ def load_model():
         
     try:
         print("Loading SAM2 model...")
-        
-        # Try to import SAM2 components
-        try:
-            from sam2.build_sam import build_sam2
-            from sam2.sam2_image_predictor import SAM2ImagePredictor
-        except ImportError as e:
-            print(f"SAM2 not available: {e}")
-            return False
-        
-        # Download model files
-        try:
-            FINE_TUNED_MODEL_WEIGHTS = hf_hub_download(repo_id="rohitmalavathu/SAM2FineTunedMito", filename="fine_tuned_sam2_2000.torch")
-            sam2_checkpoint = hf_hub_download(repo_id="rohitmalavathu/SAM2FineTunedMito", filename="sam2_hiera_small.pt")
-            model_cfg = "sam2_hiera_s.yaml"
-        except Exception as e:
-            print(f"Error downloading model files: {e}")
-            # Fallback to standard SAM2 model
-            try:
-                sam2_checkpoint = hf_hub_download(repo_id="facebook/sam2-hiera_small", filename="sam2_hiera_small.pt")
-                model_cfg = "sam2_hiera_s.yaml"
-                FINE_TUNED_MODEL_WEIGHTS = None
-            except Exception as e2:
-                print(f"Error downloading standard model: {e2}")
-                return False
+        FINE_TUNED_MODEL_WEIGHTS = hf_hub_download(repo_id="rohitmalavathu/SAM2FineTunedMito", filename="fine_tuned_sam2_2000.torch")
+        sam2_checkpoint = hf_hub_download(repo_id="rohitmalavathu/SAM2FineTunedMito", filename="sam2_hiera_small.pt")
+        model_cfg = "sam2_hiera_s.yaml"
         
         sam2_model = build_sam2(model_cfg, sam2_checkpoint, device="cpu")
         predictor = SAM2ImagePredictor(sam2_model)
-        
-        # Load fine-tuned weights if available
-        if FINE_TUNED_MODEL_WEIGHTS:
-            try:
-                predictor.model.load_state_dict(torch.load(FINE_TUNED_MODEL_WEIGHTS, map_location=torch.device('cpu'), weights_only=False))
-                print("Fine-tuned weights loaded successfully!")
-            except Exception as e:
-                print(f"Warning: Could not load fine-tuned weights: {e}")
-                print("Using standard SAM2 model")
+        predictor.model.load_state_dict(torch.load(FINE_TUNED_MODEL_WEIGHTS, map_location=torch.device('cpu'), weights_only=False))
         
         model_loaded = True
         print("Model loaded successfully!")
@@ -210,26 +182,27 @@ def upload_file():
         file.save(filepath)
         
         try:
-            # Load and process the image using OpenCV
+            # Load and process the image
             image = cv2.imread(filepath)
             if image is None:
                 return jsonify({'error': 'Invalid image file'}), 400
             
             # Convert BGR to RGB
             image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            
+            # Get image dimensions
             height, width = image_rgb.shape[:2]
             
-            # Convert image to base64 for frontend display
-            # Resize image to fit canvas (1024x1024)
+            # Calculate scaling for display
             canvas_size = 1024
             scale_factor = min(canvas_size / width, canvas_size / height)
             scaled_width = int(width * scale_factor)
             scaled_height = int(height * scale_factor)
             
-            # Resize image
+            # Resize image for display
             resized_image = cv2.resize(image_rgb, (scaled_width, scaled_height))
             
-            # Convert to PIL for base64 encoding
+            # Convert to base64 for frontend
             pil_image = Image.fromarray(resized_image)
             buffered = BytesIO()
             pil_image.save(buffered, format="PNG")
@@ -239,7 +212,7 @@ def upload_file():
             offset_x = (canvas_size - scaled_width) // 2
             offset_y = (canvas_size - scaled_height) // 2
             
-            # Return success with image data and scaling info
+            # Return success with file info and image dimensions
             return jsonify({
                 'success': True, 
                 'filename': filename,

@@ -43,10 +43,10 @@ gcloud run deploy $SERVICE_NAME \
   --platform managed \
   --region $REGION \
   --allow-unauthenticated \
-  --memory 8Gi \
-  --cpu 4 \
+  --memory 4Gi \
+  --cpu 2 \
   --timeout 3600 \
-  --max-instances 3 \
+  --max-instances 10 \
   --port 8080
 
 # Get the service URL
