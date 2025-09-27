@@ -48,7 +48,7 @@ temp/
 tmp/
 
 # Model files (if large)
-sam2/
+# sam2/  # Commented out - needed for Codespaces
 *.pth
 *.pt
 
