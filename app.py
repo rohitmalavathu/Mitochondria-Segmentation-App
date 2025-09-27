@@ -505,20 +505,30 @@ def process_boxes():
         ]
         print(f"Scaled box coordinates: {scaled_box}")
         
-        # Validate scaled coordinates
+        # Validate scaled coordinates (be more lenient)
         if scaled_box[0] >= scaled_box[2] or scaled_box[1] >= scaled_box[3]:
             print(f"Invalid scaled box coordinates: {scaled_box}")
             continue
             
-        if scaled_box[0] < 0 or scaled_box[1] < 0 or scaled_box[2] > original_width or scaled_box[3] > original_height:
-            print(f"Scaled box coordinates out of bounds: {scaled_box}, image_size=({original_width}, {original_height})")
-            continue
+        # Clamp coordinates to image bounds instead of rejecting
+        scaled_box[0] = max(0, min(scaled_box[0], original_width - 1))
+        scaled_box[1] = max(0, min(scaled_box[1], original_height - 1))
+        scaled_box[2] = max(scaled_box[0] + 1, min(scaled_box[2], original_width))
+        scaled_box[3] = max(scaled_box[1] + 1, min(scaled_box[3], original_height))
+        
+        print(f"Clamped scaled box coordinates: {scaled_box}")
             
         scaled_boxes.append(scaled_box)
     
     # Process segmentation
+    print(f"Processing {len(scaled_boxes)} scaled boxes for segmentation")
+    if len(scaled_boxes) == 0:
+        print("No valid boxes to process!")
+        return jsonify({'success': True, 'results': []})
+    
     try:
         results = process_segmentation(image_rgb, scaled_boxes, scale_ratio)
+        print(f"Segmentation returned {len(results)} results")
         
         # Clean up uploaded file after successful processing
         try:
