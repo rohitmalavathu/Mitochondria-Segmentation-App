@@ -43,6 +43,10 @@ uploads/
 *.jpg
 *.jpeg
 
+# Temporary files
+temp/
+tmp/
+
 # Model files (if large)
 sam2/
 *.pth

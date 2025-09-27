@@ -12,6 +12,8 @@ from io import BytesIO
 from PIL import Image
 import json
 from huggingface_hub import hf_hub_download
+import time
+import glob
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max file size
@@ -19,6 +21,25 @@ app.config['UPLOAD_FOLDER'] = 'uploads'
 
 # Create upload directory if it doesn't exist
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+
+def cleanup_old_uploads():
+    """Clean up uploaded files older than 1 hour"""
+    try:
+        current_time = time.time()
+        upload_dir = app.config['UPLOAD_FOLDER']
+        
+        # Get all files in uploads directory
+        files = glob.glob(os.path.join(upload_dir, '*'))
+        
+        for file_path in files:
+            if os.path.isfile(file_path):
+                # Check if file is older than 1 hour (3600 seconds)
+                file_age = current_time - os.path.getmtime(file_path)
+                if file_age > 3600:  # 1 hour
+                    os.remove(file_path)
+                    print(f"Cleaned up old file: {os.path.basename(file_path)}")
+    except Exception as e:
+        print(f"Error during cleanup: {e}")
 
 # Global variables for model
 sam2_model = None
@@ -145,6 +166,9 @@ def index():
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
+    # Clean up old files before processing new upload
+    cleanup_old_uploads()
+    
     if 'file' not in request.files:
         return jsonify({'error': 'No file provided'}), 400
     
@@ -212,6 +236,9 @@ def upload_file():
 
 @app.route('/process', methods=['POST'])
 def process_boxes():
+    # Clean up old files before processing
+    cleanup_old_uploads()
+    
     try:
         data = request.get_json()
         print(f"Received data: {data}")
@@ -296,6 +323,14 @@ def process_boxes():
     # Process segmentation
     try:
         results = process_segmentation(image_rgb, scaled_boxes, scale_ratio)
+        
+        # Clean up uploaded file after successful processing
+        try:
+            os.remove(filepath)
+            print(f"Cleaned up uploaded file: {filename}")
+        except Exception as cleanup_error:
+            print(f"Warning: Could not delete uploaded file {filename}: {cleanup_error}")
+        
         return jsonify({'success': True, 'results': results})
     except Exception as e:
         return jsonify({'error': f'Processing failed: {str(e)}'}), 500
