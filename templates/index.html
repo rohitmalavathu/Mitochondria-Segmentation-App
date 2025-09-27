@@ -558,7 +558,7 @@
                         };
                         img.src = `data:image/png;base64,${this.currentImage}`;
                         
-                        this.updateResults('');
+                        this.results.style.display = 'none';
                         console.log('File uploaded successfully!');
                     } else {
                         throw new Error(data.error || 'Upload failed');
