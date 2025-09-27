@@ -549,7 +549,15 @@
                         this.displayImageSize = data.display_shape;
                         this.scaleFactor = data.scale_factor;
                         this.imageOffset = data.image_offset;
-                        this.displayImage();
+                        
+                        // Display the image
+                        const img = new Image();
+                        img.onload = () => {
+                            this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                            this.ctx.drawImage(img, this.imageOffset.x, this.imageOffset.y, this.displayImageSize[1], this.displayImageSize[0]);
+                        };
+                        img.src = `data:image/png;base64,${this.currentImage}`;
+                        
                         this.updateResults('');
                         console.log('File uploaded successfully!');
                     } else {
