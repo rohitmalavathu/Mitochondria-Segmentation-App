@@ -8,3 +8,4 @@ torchvision>=0.15.0
 gunicorn==21.2.0
 huggingface_hub==0.19.4
 scipy>=1.11.0
+hydra-core>=1.1.0
