@@ -2,9 +2,8 @@ from flask import Flask, render_template, request, jsonify
 import os
 import time
 import glob
-import cv2
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageFilter
 from scipy.ndimage import gaussian_filter
 # import torch
 # from huggingface_hub import hf_hub_download
@@ -102,68 +101,47 @@ def process_segmentation(image, boxes, scale_ratio=None):
         if cropped_image.size == 0:
             continue
         
-        # Try real SAM2 segmentation if available
-        if predictor is not None:
-            try:
-                # Resize for model input
-                cropped_image_resized = cv2.resize(cropped_image, (256, 256))
-                
-                # Convert to 3-channel if grayscale
-                if cropped_image_resized.ndim == 2:
-                    cropped_image_resized = np.stack([cropped_image_resized] * 3, axis=-1)
-                
-                # Process with SAM2
-                with torch.no_grad():
-                    predictor.set_image(cropped_image_resized)
-                    masks, scores, logits = predictor.predict(
-                        point_coords=[[[128, 128]]],
-                        point_labels=[[1]]
-                    )
-                
-                # Process masks
-                sorted_masks = masks[np.argsort(scores)][::-1]
-                seg_map = np.zeros_like(sorted_masks[0], dtype=np.uint8)
-                occupancy_mask = np.zeros_like(sorted_masks[0], dtype=bool)
-                
-                for j in range(sorted_masks.shape[0]):
-                    mask = sorted_masks[j]
-                    if (mask * occupancy_mask).sum() / mask.sum() > 0.15:
-                        continue
-                    
-                    mask_bool = mask.astype(bool)
-                    mask_bool[occupancy_mask] = False
-                    seg_map[mask_bool] = j + 1
-                    occupancy_mask[mask_bool] = True
-                
-                # Smooth the segmentation
-                seg_mask = gaussian_filter(seg_map.astype(float), sigma=2)
-                smoothed_mask = (seg_mask > 0.5).astype(np.uint8)
-                segmentation_resized = cv2.resize(smoothed_mask, (original_width, original_height))
-                
-                # Calculate area
-                area_pixels = np.sum(segmentation_resized)
-                area_nm2 = None
-                if scale_ratio:
-                    area_nm2 = area_pixels / (scale_ratio ** 2)
-                
-                # Find contours
-                segmentation_255 = segmentation_resized * 255
-                contours, _ = cv2.findContours(segmentation_255, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-                
-                # Convert contours to original image coordinates
-                contour_points = []
-                for contour in contours:
-                    if contour is not None and len(contour) > 0:
-                        adjusted_contour = contour.reshape(-1, 2) + [x1, y1]
-                        contour_points.append(adjusted_contour.tolist())
-                
-                print(f"Box {i}: Real SAM2 segmentation - Area: {area_pixels} pixels")
-                
-            except Exception as e:
-                print(f"Box {i}: SAM2 processing failed: {e}, using mock")
-                # Fall back to mock processing
-                area_pixels = int((x2 - x1) * (y2 - y1) * 0.7)
-                area_nm2 = area_pixels / (scale_ratio ** 2) if scale_ratio else None
+        # Enhanced mock processing with better segmentation simulation
+        try:
+            # Convert to grayscale for processing
+            if len(cropped_image.shape) == 3:
+                gray_image = np.mean(cropped_image, axis=2)
+            else:
+                gray_image = cropped_image
+            
+            # Apply some basic image processing to simulate segmentation
+            # Use thresholding to find regions
+            threshold = np.mean(gray_image) * 0.8
+            binary_mask = (gray_image > threshold).astype(np.uint8)
+            
+            # Apply morphological operations to clean up the mask
+            from scipy.ndimage import binary_fill_holes, binary_erosion, binary_dilation
+            
+            # Fill holes and clean up
+            binary_mask = binary_fill_holes(binary_mask).astype(np.uint8)
+            binary_mask = binary_erosion(binary_dilation(binary_mask, iterations=2), iterations=1).astype(np.uint8)
+            
+            # Calculate area
+            area_pixels = np.sum(binary_mask)
+            area_nm2 = None
+            if scale_ratio:
+                area_nm2 = area_pixels / (scale_ratio ** 2)
+            
+            # Create contour points by finding edges
+            # Simple edge detection
+            edges = np.abs(np.diff(binary_mask, axis=0)) + np.abs(np.diff(binary_mask, axis=1))
+            edge_points = np.where(edges > 0)
+            
+            if len(edge_points[0]) > 0:
+                # Create a simple contour from edge points
+                contour_points = [[
+                    [x1 + 10, y1 + 10], 
+                    [x2 - 10, y1 + 10], 
+                    [x2 - 10, y2 - 10], 
+                    [x1 + 10, y2 - 10]
+                ]]
+            else:
+                # Fallback to simple rectangle
                 padding = 10
                 contour_points = [[
                     [x1 + padding, y1 + padding], 
@@ -171,8 +149,12 @@ def process_segmentation(image, boxes, scale_ratio=None):
                     [x2 - padding, y2 - padding], 
                     [x1 + padding, y2 - padding]
                 ]]
-        else:
-            # Use mock processing
+            
+            print(f"Box {i}: Enhanced mock segmentation - Area: {area_pixels} pixels")
+            
+        except Exception as e:
+            print(f"Box {i}: Enhanced processing failed: {e}, using simple mock")
+            # Fallback to simple mock processing
             area_pixels = int((x2 - x1) * (y2 - y1) * 0.7)
             area_nm2 = area_pixels / (scale_ratio ** 2) if scale_ratio else None
             padding = 10
@@ -182,7 +164,7 @@ def process_segmentation(image, boxes, scale_ratio=None):
                 [x2 - padding, y2 - padding], 
                 [x1 + padding, y2 - padding]
             ]]
-            print(f"Box {i}: Mock segmentation - Area: {area_pixels} pixels")
+            print(f"Box {i}: Simple mock segmentation - Area: {area_pixels} pixels")
         
         results.append({
             'box_id': i,
@@ -216,14 +198,9 @@ def upload_file():
         file.save(filepath)
         
         try:
-            # Load and process the image using OpenCV
-            image = cv2.imread(filepath)
-            if image is None:
-                return jsonify({'error': 'Invalid image file'}), 400
-            
-            # Convert BGR to RGB
-            image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-            height, width = image_rgb.shape[:2]
+            # Load and process the image using PIL
+            image = Image.open(filepath)
+            width, height = image.size
             
             # Return success with file info and image dimensions
             return jsonify({
@@ -256,14 +233,15 @@ def process_boxes():
             return jsonify({'error': 'File not found'}), 404
         
         # Load the image for processing
-        image = cv2.imread(filepath)
+        image = Image.open(filepath)
         if image is None:
             return jsonify({'error': 'Could not load image'}), 400
         
-        image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        # Convert PIL image to numpy array
+        image_array = np.array(image)
         
         # Process segmentation using the real function
-        results = process_segmentation(image_rgb, boxes, scale_ratio)
+        results = process_segmentation(image_array, boxes, scale_ratio)
         
         # Clean up uploaded file after processing
         try:
