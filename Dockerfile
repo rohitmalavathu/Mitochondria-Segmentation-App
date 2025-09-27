@@ -11,7 +11,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the application code
 COPY app.py .
 COPY templates/ templates/
-COPY sam2/ sam2/
 
 # Create the uploads directory
 RUN mkdir -p uploads
