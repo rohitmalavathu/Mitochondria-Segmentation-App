@@ -24,6 +24,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the application code
 COPY . .
 
+# Download SAM2 model during build
+RUN python -c "from huggingface_hub import hf_hub_download; hf_hub_download('facebook/sam2-hiera_large', 'sam2_hiera_large.pt', local_dir='sam2')"
+
 # Create uploads directory
 RUN mkdir -p uploads
 

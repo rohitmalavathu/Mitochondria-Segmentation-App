@@ -3,7 +3,7 @@
 # Google Cloud Run Deployment Script for Mitochondria Segmentation App
 
 # Set variables
-PROJECT_ID="your-project-id"  # Replace with your Google Cloud project ID
+PROJECT_ID="mitochondriasegmentation"  # Replace with your Google Cloud project ID
 SERVICE_NAME="mitochondria-segmentation"
 REGION="us-central1"
 IMAGE_NAME="gcr.io/$PROJECT_ID/$SERVICE_NAME"

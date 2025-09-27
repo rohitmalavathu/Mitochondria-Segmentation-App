@@ -55,13 +55,21 @@ def load_model():
         
     try:
         print("Loading SAM2 model...")
-        FINE_TUNED_MODEL_WEIGHTS = hf_hub_download(repo_id="rohitmalavathu/SAM2FineTunedMito", filename="fine_tuned_sam2_2000.torch")
-        sam2_checkpoint = hf_hub_download(repo_id="rohitmalavathu/SAM2FineTunedMito", filename="sam2_hiera_small.pt")
-        model_cfg = "sam2_hiera_s.yaml"
+        
+        # Try to use local model file first (downloaded during Docker build)
+        local_model_path = "sam2/sam2_hiera_large.pt"
+        if os.path.exists(local_model_path):
+            sam2_checkpoint = local_model_path
+            print(f"Using local model: {sam2_checkpoint}")
+        else:
+            # Fallback to downloading from Hugging Face
+            print("Local model not found, downloading from Hugging Face...")
+            sam2_checkpoint = hf_hub_download(repo_id="facebook/sam2-hiera_large", filename="sam2_hiera_large.pt")
+        
+        model_cfg = "sam2/sam2_hiera_s.yaml"
         
         sam2_model = build_sam2(model_cfg, sam2_checkpoint, device="cpu")
         predictor = SAM2ImagePredictor(sam2_model)
-        predictor.model.load_state_dict(torch.load(FINE_TUNED_MODEL_WEIGHTS, map_location=torch.device('cpu'), weights_only=False))
         
         model_loaded = True
         print("Model loaded successfully!")
