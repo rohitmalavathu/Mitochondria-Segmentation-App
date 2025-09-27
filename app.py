@@ -208,19 +208,34 @@ def upload_file():
             # Try with PIL for TIFF and other formats that OpenCV might not support
             try:
                 pil_image = Image.open(filepath)
+                print(f"PIL loaded image: {file.filename}, mode: {pil_image.mode}, size: {pil_image.size}")
+                
+                # Convert PIL image to RGB first, then to OpenCV format
+                if pil_image.mode != 'RGB':
+                    pil_image = pil_image.convert('RGB')
+                    print(f"Converted to RGB: {pil_image.mode}")
+                
                 # Convert PIL image to OpenCV format
                 image = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
-                print(f"Loaded image using PIL: {file.filename}")
+                print(f"Successfully converted PIL image to OpenCV format: {image.shape}")
             except Exception as e:
                 print(f"Failed to load image with PIL: {e}")
+                import traceback
+                traceback.print_exc()
                 return jsonify({'error': 'Invalid image file. Supported formats: PNG, JPG, JPEG, TIFF'}), 400
         
         # Convert to RGB
-        image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        try:
+            image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            print(f"Converted to RGB: {image_rgb.shape}")
+        except Exception as e:
+            print(f"Error converting to RGB: {e}")
+            return jsonify({'error': 'Error processing image format'}), 400
         
         # Calculate scaling to fit canvas while maintaining aspect ratio
         canvas_size = 1024
         original_height, original_width = image_rgb.shape[:2]
+        print(f"Original image dimensions: {original_width}x{original_height}")
         
         # Calculate scale factor to fit image in canvas
         scale_factor = min(canvas_size / original_width, canvas_size / original_height)
@@ -244,10 +259,17 @@ def upload_file():
         display_image = canvas_image
         
         # Encode image for frontend
-        pil_image = Image.fromarray(display_image)
-        buffer = BytesIO()
-        pil_image.save(buffer, format='PNG')
-        img_str = base64.b64encode(buffer.getvalue()).decode()
+        try:
+            pil_image = Image.fromarray(display_image)
+            buffer = BytesIO()
+            pil_image.save(buffer, format='PNG')
+            img_str = base64.b64encode(buffer.getvalue()).decode()
+            print(f"Successfully encoded image for frontend")
+        except Exception as e:
+            print(f"Error encoding image: {e}")
+            import traceback
+            traceback.print_exc()
+            return jsonify({'error': 'Error encoding image for display'}), 500
         
         return jsonify({
             'success': True,
