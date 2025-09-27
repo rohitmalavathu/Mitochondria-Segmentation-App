@@ -1121,6 +1121,10 @@
                         this.updateLoadingProgress('Processing results...', 90);
                         
                         console.log('Segmentation results received:', data.results);
+                        console.log('Results type:', typeof data.results);
+                        console.log('Results length:', data.results ? data.results.length : 'undefined');
+                        console.log('First result:', data.results && data.results.length > 0 ? data.results[0] : 'none');
+                        
                         this.displayResults(data.results);
                         
                         this.updateLoadingProgress('Complete!', 100);
@@ -1178,7 +1182,22 @@
             }
 
             drawSegmentationContours() {
-                if (!this.segmentationResults) return;
+                console.log('drawSegmentationContours called');
+                console.log('segmentationResults:', this.segmentationResults);
+                console.log('segmentationResults type:', typeof this.segmentationResults);
+                console.log('segmentationResults length:', this.segmentationResults ? this.segmentationResults.length : 'undefined');
+                
+                if (!this.segmentationResults) {
+                    console.log('No segmentation results to draw');
+                    return;
+                }
+                
+                if (!Array.isArray(this.segmentationResults)) {
+                    console.log('Segmentation results is not an array:', this.segmentationResults);
+                    return;
+                }
+                
+                console.log('Drawing segmentation contours for', this.segmentationResults.length, 'results');
                 
                 // Draw segmentation contours
                 this.ctx.strokeStyle = '#ff00ff'; // Magenta color for segmentation borders
@@ -1186,6 +1205,7 @@
                 this.ctx.setLineDash([]);
                 
                 this.segmentationResults.forEach((result, resultIndex) => {
+                    console.log(`Processing result ${resultIndex}:`, result);
                     if (result.contours && result.contours.length > 0) {
                         console.log(`Drawing contours for box ${result.box_id}:`, {
                             contours_count: result.contours.length
@@ -1193,12 +1213,23 @@
                         
                         // The contours are in full image coordinates
                         // We need to convert them to display coordinates
-                        const originalWidth = this.originalImageSize[1]; // width
-                        const originalHeight = this.originalImageSize[0]; // height
-                        const displayWidth = this.displayImageSize[1]; // display width
-                        const displayHeight = this.displayImageSize[0]; // display height
-                        const imageOffsetX = this.imageOffset.x;
-                        const imageOffsetY = this.imageOffset.y;
+                        console.log('Image scaling data:', {
+                            originalImageSize: this.originalImageSize,
+                            displayImageSize: this.displayImageSize,
+                            imageOffset: this.imageOffset
+                        });
+                        
+                        const originalWidth = this.originalImageSize ? this.originalImageSize[1] : 0; // width
+                        const originalHeight = this.originalImageSize ? this.originalImageSize[0] : 0; // height
+                        const displayWidth = this.displayImageSize ? this.displayImageSize[1] : 0; // display width
+                        const displayHeight = this.displayImageSize ? this.displayImageSize[0] : 0; // display height
+                        const imageOffsetX = this.imageOffset ? this.imageOffset.x : 0;
+                        const imageOffsetY = this.imageOffset ? this.imageOffset.y : 0;
+                        
+                        if (originalWidth === 0 || originalHeight === 0 || displayWidth === 0 || displayHeight === 0) {
+                            console.log('Invalid image dimensions, skipping contour drawing');
+                            return;
+                        }
                         
                         console.log(`Box ${result.box_id} coordinate conversion:`, {
                             originalSize: [originalWidth, originalHeight],
