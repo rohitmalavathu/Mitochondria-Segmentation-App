@@ -266,6 +266,69 @@
             border: 1px solid #e0e0e0;
         }
 
+        .loading-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.8);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+        }
+
+        .loading-content {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            text-align: center;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #007bff;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .loading-text {
+            font-size: 18px;
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .loading-progress {
+            font-size: 14px;
+            color: #666;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 6px;
+            background-color: #e9ecef;
+            border-radius: 3px;
+            margin-top: 10px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background-color: #007bff;
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
         .result-item {
             background: white;
             padding: 15px;
@@ -330,6 +393,18 @@
     </style>
 </head>
 <body>
+    <!-- Loading Screen -->
+    <div class="loading-screen" id="loadingScreen">
+        <div class="loading-content">
+            <div class="spinner"></div>
+            <div class="loading-text" id="loadingText">Uploading image...</div>
+            <div class="loading-progress" id="loadingProgress">Preparing upload...</div>
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+        </div>
+    </div>
+
     <div class="container">
         <div class="header">
             <h1>🧬 Mitochondria Segmentation Tool</h1>
@@ -461,6 +536,10 @@
                 this.loading = document.getElementById('loading');
                 this.results = document.getElementById('results');
                 this.resultsContent = document.getElementById('resultsContent');
+                this.loadingScreen = document.getElementById('loadingScreen');
+                this.loadingText = document.getElementById('loadingText');
+                this.loadingProgress = document.getElementById('loadingProgress');
+                this.progressFill = document.getElementById('progressFill');
                 
                 this.mode = 'scale'; // 'box', 'scale', 'psd', or 'vesicle'
                 this.boxes = [];
@@ -537,18 +616,26 @@
                     return await this.uploadFileInChunks(file);
                 }
 
+                this.showLoading('Uploading image...', 0);
+                
                 const formData = new FormData();
                 formData.append('file', file);
 
                 try {
+                    this.updateLoadingProgress('Sending file to server...', 30);
+                    
                     const response = await fetch('/upload', {
                         method: 'POST',
                         body: formData
                     });
 
+                    this.updateLoadingProgress('Processing image...', 70);
+
                     const data = await response.json();
                     
                     if (data.success) {
+                        this.updateLoadingProgress('Displaying image...', 90);
+                        
                         this.currentImage = data.image;
                         this.currentFilename = data.filename;
                         this.originalImageSize = data.original_shape;
@@ -557,11 +644,15 @@
                         this.imageOffset = data.image_offset;
                         this.displayImage();
                         this.updateResults('');
+                        
+                        this.updateLoadingProgress('Complete!', 100);
+                        setTimeout(() => this.hideLoading(), 500);
                         console.log('File uploaded successfully!');
                     } else {
                         throw new Error(data.error || 'Upload failed');
                     }
                 } catch (error) {
+                    this.hideLoading();
                     alert('Error uploading image: ' + error.message);
                 }
             }
@@ -574,9 +665,14 @@
 
                 console.log(`Uploading ${fileName} in ${totalChunks} chunks of ${chunkSize / (1024 * 1024)}MB each`);
 
+                this.showLoading('Preparing chunked upload...', 0);
+
                 try {
                     // Upload chunks
                     for (let i = 0; i < totalChunks; i++) {
+                        const progress = Math.round((i / totalChunks) * 60); // 0-60% for chunk upload
+                        this.updateLoadingProgress(`Uploading chunk ${i + 1}/${totalChunks}...`, progress);
+                        
                         const start = i * chunkSize;
                         const end = Math.min(start + chunkSize, file.size);
                         const chunk = file.slice(start, end);
@@ -601,7 +697,9 @@
                     }
 
                     // Assemble chunks on server
+                    this.updateLoadingProgress('Assembling file on server...', 70);
                     console.log('All chunks uploaded, assembling file...');
+                    
                     const assembleResponse = await fetch('/assemble-chunks', {
                         method: 'POST',
                         headers: {
@@ -614,9 +712,13 @@
                         })
                     });
 
+                    this.updateLoadingProgress('Processing image...', 85);
+
                     const data = await assembleResponse.json();
                     
                     if (data.success) {
+                        this.updateLoadingProgress('Displaying image...', 95);
+                        
                         this.currentImage = data.image;
                         this.currentFilename = data.filename;
                         this.originalImageSize = data.original_shape;
@@ -633,12 +735,16 @@
                         img.src = `data:image/png;base64,${this.currentImage}`;
                         
                         this.results.style.display = 'none';
+                        
+                        this.updateLoadingProgress('Complete!', 100);
+                        setTimeout(() => this.hideLoading(), 500);
                         console.log('File uploaded and assembled successfully!');
                     } else {
                         throw new Error(data.error || 'Failed to assemble file');
                     }
 
                 } catch (error) {
+                    this.hideLoading();
                     console.error('Chunked upload failed:', error);
                     alert(`Upload failed: ${error.message}`);
                 }
@@ -658,6 +764,23 @@
                 if (content) {
                     this.resultsContent.innerHTML = content;
                 }
+            }
+
+            showLoading(text, progress = 0) {
+                this.loadingScreen.style.display = 'flex';
+                this.loadingText.textContent = text;
+                this.loadingProgress.textContent = progress > 0 ? `${Math.round(progress)}%` : 'Processing...';
+                this.progressFill.style.width = `${progress}%`;
+            }
+
+            hideLoading() {
+                this.loadingScreen.style.display = 'none';
+            }
+
+            updateLoadingProgress(text, progress) {
+                this.loadingText.textContent = text;
+                this.loadingProgress.textContent = `${Math.round(progress)}%`;
+                this.progressFill.style.width = `${progress}%`;
             }
 
             loadImageToCanvas(imageData) {
@@ -953,7 +1076,7 @@
                     return;
                 }
                 
-                this.loading.classList.add('show');
+                this.showLoading('Processing segmentation...', 0);
                 this.processBtn.disabled = true;
                 
                 try {
@@ -963,6 +1086,8 @@
                         filename: this.currentFilename,
                         image_scaling: this.imageScaling
                     });
+                    
+                    this.updateLoadingProgress('Sending data to server...', 20);
                     
                     const response = await fetch('/process', {
                         method: 'POST',
@@ -979,21 +1104,28 @@
                         })
                     });
                     
+                    this.updateLoadingProgress('Running AI segmentation...', 60);
+                    
                     console.log('Response status:', response.status);
                     const data = await response.json();
                     console.log('Response data:', data);
                     
                     if (data.success) {
+                        this.updateLoadingProgress('Processing results...', 90);
+                        
                         console.log('Segmentation results received:', data.results);
                         this.displayResults(data.results);
+                        
+                        this.updateLoadingProgress('Complete!', 100);
+                        setTimeout(() => this.hideLoading(), 500);
                     } else {
-                        alert('Error processing segmentation: ' + data.error);
+                        throw new Error(data.error || 'Segmentation failed');
                     }
                 } catch (error) {
+                    this.hideLoading();
                     console.error('Error processing segmentation:', error);
                     alert('Error processing segmentation: ' + error.message);
                 } finally {
-                    this.loading.classList.remove('show');
                     this.processBtn.disabled = false;
                 }
             }
