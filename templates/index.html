@@ -1,0 +1,1142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mitochondria Segmentation Tool</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            font-weight: 300;
+        }
+
+        .header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 400px;
+            gap: 30px;
+            padding: 30px;
+        }
+
+        .canvas-container {
+            position: relative;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            overflow: hidden;
+            background: #f8f9fa;
+        }
+
+        #imageCanvas {
+            display: block;
+            max-width: 100%;
+            height: auto;
+            cursor: crosshair;
+        }
+
+        .controls {
+            background: #f8f9fa;
+            padding: 25px;
+            border-radius: 10px;
+            border: 1px solid #e0e0e0;
+        }
+
+        .control-group {
+            margin-bottom: 25px;
+        }
+
+        .control-group h3 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+            font-size: 1.2em;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 5px;
+        }
+
+        .file-input-wrapper {
+            position: relative;
+            display: inline-block;
+            width: 100%;
+        }
+
+        .file-input {
+            position: absolute;
+            opacity: 0;
+            width: 100%;
+            height: 100%;
+            cursor: pointer;
+        }
+
+        .file-input-button {
+            display: block;
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #3498db, #2980b9);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-align: center;
+        }
+
+        .file-input-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(52, 152, 219, 0.4);
+        }
+
+        .mode-buttons {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .mode-btn {
+            flex: 1;
+            padding: 12px;
+            border: 2px solid #3498db;
+            background: white;
+            color: #3498db;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 500;
+        }
+
+        .mode-btn.active {
+            background: #3498db;
+            color: white;
+        }
+
+        .mode-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 3px 10px rgba(52, 152, 219, 0.3);
+        }
+
+        .info-display {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #ddd;
+            margin-bottom: 15px;
+        }
+
+        .info-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            padding: 5px 0;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .info-item:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+        }
+
+        .info-label {
+            font-weight: 600;
+            color: #555;
+        }
+
+        .info-value {
+            color: #2c3e50;
+            font-family: 'Courier New', monospace;
+        }
+
+        .action-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .btn {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            text-align: center;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #27ae60, #2ecc71);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(46, 204, 113, 0.4);
+        }
+
+        .btn-secondary {
+            background: linear-gradient(135deg, #e74c3c, #c0392b);
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(231, 76, 60, 0.4);
+        }
+
+        .btn-warning {
+            background: linear-gradient(135deg, #f39c12, #e67e22);
+            color: white;
+        }
+
+        .btn-warning:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(243, 156, 18, 0.4);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none !important;
+            box-shadow: none !important;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+            color: #3498db;
+        }
+
+        .loading.show {
+            display: block;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3498db;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .results {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border: 1px solid #e0e0e0;
+        }
+
+        .result-item {
+            background: white;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 8px;
+            border-left: 4px solid #3498db;
+        }
+
+        .result-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .box-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .box-id {
+            font-weight: bold;
+            color: #2c3e50;
+        }
+
+        .area-info {
+            font-family: 'Courier New', monospace;
+            color: #27ae60;
+        }
+
+        .instructions {
+            background: #e8f4fd;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #3498db;
+            margin-bottom: 20px;
+        }
+
+        .instructions h4 {
+            color: #2c3e50;
+            margin-bottom: 10px;
+        }
+
+        .instructions ul {
+            margin-left: 20px;
+        }
+
+        .instructions li {
+            margin-bottom: 5px;
+            color: #555;
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                grid-template-columns: 1fr;
+                gap: 20px;
+            }
+            
+            .header h1 {
+                font-size: 2em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🧬 Mitochondria Segmentation Tool</h1>
+            <p>Upload images, draw bounding boxes, and analyze mitochondrial structures with AI-powered segmentation</p>
+        </div>
+
+        <div class="main-content">
+            <div class="canvas-container">
+                <canvas id="imageCanvas" width="1024" height="1024"></canvas>
+                <div class="loading" id="loading">
+                    <div class="spinner"></div>
+                    <p>Processing segmentation...</p>
+                </div>
+            </div>
+
+            <div class="controls">
+                <div class="control-group">
+                    <h3>📁 Image Upload</h3>
+                    <div class="file-input-wrapper">
+                        <input type="file" id="imageInput" class="file-input" accept="image/*">
+                        <label for="imageInput" class="file-input-button">
+                            Choose Image File
+                        </label>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <h3>🛠️ Tools</h3>
+                    <div class="mode-buttons">
+                        <button class="mode-btn active" id="scaleMode">Scale Line</button>
+                        <button class="mode-btn" id="boxMode">Draw Boxes</button>
+                        <button class="mode-btn" id="psdMode">PSD Length</button>
+                        <button class="mode-btn" id="vesicleMode">Vesicle Count</button>
+                    </div>
+                    <div class="instructions">
+                        <h4>Instructions:</h4>
+                        <ul>
+                            <li><strong>Scale Line:</strong> Draw a 500nm reference line for accurate measurements</li>
+                            <li><strong>Draw Boxes:</strong> Click and drag to create bounding boxes around mitochondria</li>
+                            <li><strong>PSD Length:</strong> Draw a line across a PSD region to measure its width</li>
+                            <li><strong>Vesicle Count:</strong> Click to place dots on presynaptic vesicles and organize by neurons</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <h3>📏 Scale Information</h3>
+                    <div class="info-display">
+                        <div class="info-item">
+                            <span class="info-label">Scale Ratio:</span>
+                            <span class="info-value" id="scaleRatio">Not set</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Reference Line:</span>
+                            <span class="info-value" id="referenceLength">500 nm</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <h3>📐 PSD Measurements</h3>
+                    <div class="info-display">
+                        <div class="info-item">
+                            <span class="info-label">PSD Length:</span>
+                            <span class="info-value" id="psdLength">Not measured</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Length (nm):</span>
+                            <span class="info-value" id="psdLengthNm">-</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <h3>🔬 Vesicle Count</h3>
+                    <div class="info-display">
+                        <div class="info-item">
+                            <span class="info-label">Current Neuron:</span>
+                            <span class="info-value" id="currentNeuron">1</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Vesicle Count:</span>
+                            <span class="info-value" id="vesicleCount">0</span>
+                        </div>
+                    </div>
+                    <div class="action-buttons">
+                        <button class="btn btn-secondary" id="nextNeuronBtn">Next Neuron</button>
+                        <button class="btn btn-secondary" id="prevNeuronBtn">Previous Neuron</button>
+                        <button class="btn btn-warning" id="clearVesiclesBtn">Clear Vesicles</button>
+                    </div>
+                    <div class="vesicle-summary" id="vesicleSummary" style="margin-top: 10px; font-size: 12px; color: #666;">
+                        No vesicles counted yet
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <h3>📊 Analysis</h3>
+                    <div class="action-buttons">
+                        <button class="btn btn-primary" id="processBtn" disabled>
+                            Process Segmentation
+                        </button>
+                        <button class="btn btn-secondary" id="clearBtn">
+                            Clear All
+                        </button>
+                        <button class="btn btn-warning" id="undoBtn">
+                            Undo Last
+                        </button>
+                    </div>
+                </div>
+
+                <div class="results" id="results" style="display: none;">
+                    <h3>📈 Results</h3>
+                    <div id="resultsContent"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class MitochondriaSegmentation {
+            constructor() {
+                this.canvas = document.getElementById('imageCanvas');
+                this.ctx = this.canvas.getContext('2d');
+                this.imageInput = document.getElementById('imageInput');
+                this.processBtn = document.getElementById('processBtn');
+                this.clearBtn = document.getElementById('clearBtn');
+                this.undoBtn = document.getElementById('undoBtn');
+                this.loading = document.getElementById('loading');
+                this.results = document.getElementById('results');
+                this.resultsContent = document.getElementById('resultsContent');
+                
+                this.mode = 'scale'; // 'box', 'scale', 'psd', or 'vesicle'
+                this.boxes = [];
+                this.scaleLine = null;
+                this.scaleRatio = null;
+                this.psdLines = [];
+                this.vesicles = {}; // Object to store vesicles by neuron: {1: [{x, y, id}], 2: [...]}
+                this.currentNeuron = 1;
+                this.vesicleIdCounter = 0;
+                this.undoStack = []; // Track order of operations for proper undo
+                this.currentImage = null;
+                this.currentFilename = null;
+                this.isDrawing = false;
+                this.startX = 0;
+                this.startY = 0;
+                this.segmentationResults = null;
+                this.imageScaling = null;
+                
+                this.initializeEventListeners();
+            }
+
+            initializeEventListeners() {
+                // Mode buttons
+                document.getElementById('boxMode').addEventListener('click', () => this.setMode('box'));
+                document.getElementById('scaleMode').addEventListener('click', () => this.setMode('scale'));
+                document.getElementById('psdMode').addEventListener('click', () => this.setMode('psd'));
+                document.getElementById('vesicleMode').addEventListener('click', () => this.setMode('vesicle'));
+                
+                // File input
+                this.imageInput.addEventListener('change', (e) => this.handleImageUpload(e));
+                
+                // Canvas events
+                this.canvas.addEventListener('mousedown', (e) => this.handleMouseDown(e));
+                this.canvas.addEventListener('mousemove', (e) => this.handleMouseMove(e));
+                this.canvas.addEventListener('mouseup', (e) => this.handleMouseUp(e));
+                
+                // Action buttons
+                this.processBtn.addEventListener('click', () => this.processSegmentation());
+                this.clearBtn.addEventListener('click', () => this.clearAll());
+                this.undoBtn.addEventListener('click', () => this.undoLast());
+                
+                // Vesicle count buttons
+                document.getElementById('nextNeuronBtn').addEventListener('click', () => this.nextNeuron());
+                document.getElementById('prevNeuronBtn').addEventListener('click', () => this.prevNeuron());
+                document.getElementById('clearVesiclesBtn').addEventListener('click', () => this.clearVesicles());
+            }
+
+            setMode(mode) {
+                this.mode = mode;
+                document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
+                document.getElementById(mode + 'Mode').classList.add('active');
+                
+                if (mode === 'vesicle') {
+                    this.canvas.style.cursor = 'crosshair';
+                } else {
+                    this.canvas.style.cursor = 'crosshair';
+                }
+            }
+
+            async handleImageUpload(event) {
+                const file = event.target.files[0];
+                if (!file) return;
+
+                const formData = new FormData();
+                formData.append('file', file);
+
+                try {
+                    const response = await fetch('/upload', {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        this.currentImage = data.image;
+                        this.currentFilename = data.filename; // Use server-generated filename
+                        this.imageScaling = {
+                            scale_factor: data.scale_factor,
+                            image_offset: data.image_offset,
+                            image_size: data.image_size
+                        };
+                        this.loadImageToCanvas(data.image);
+                        this.clearAll();
+                        this.processBtn.disabled = false;
+                        console.log('Image uploaded successfully:', data.filename);
+                        console.log('Image scaling info:', this.imageScaling);
+                    } else {
+                        alert('Error uploading image: ' + data.error);
+                    }
+                } catch (error) {
+                    alert('Error uploading image: ' + error.message);
+                }
+            }
+
+            loadImageToCanvas(imageData) {
+                const img = new Image();
+                img.onload = () => {
+                    this.canvas.width = 1024;
+                    this.canvas.height = 1024;
+                    this.ctx.drawImage(img, 0, 0, 1024, 1024);
+                };
+                img.src = 'data:image/png;base64,' + imageData;
+            }
+
+            handleMouseDown(e) {
+                if (!this.currentImage) return;
+                
+                const rect = this.canvas.getBoundingClientRect();
+                const scaleX = this.canvas.width / rect.width;
+                const scaleY = this.canvas.height / rect.height;
+                this.startX = (e.clientX - rect.left) * scaleX;
+                this.startY = (e.clientY - rect.top) * scaleY;
+                this.isDrawing = true;
+            }
+
+            handleMouseMove(e) {
+                if (!this.isDrawing || !this.currentImage) return;
+                
+                const rect = this.canvas.getBoundingClientRect();
+                const scaleX = this.canvas.width / rect.width;
+                const scaleY = this.canvas.height / rect.height;
+                const currentX = (e.clientX - rect.left) * scaleX;
+                const currentY = (e.clientY - rect.top) * scaleY;
+                
+                this.redrawCanvas();
+                
+                if (this.mode === 'box') {
+                    this.ctx.strokeStyle = '#00ff00';
+                    this.ctx.lineWidth = 2;
+                    this.ctx.strokeRect(this.startX, this.startY, currentX - this.startX, currentY - this.startY);
+                } else if (this.mode === 'scale') {
+                    this.ctx.strokeStyle = '#ff0000';
+                    this.ctx.lineWidth = 3;
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(this.startX, this.startY);
+                    this.ctx.lineTo(currentX, currentY);
+                    this.ctx.stroke();
+                } else if (this.mode === 'psd') {
+                    this.ctx.strokeStyle = '#0000ff';
+                    this.ctx.lineWidth = 3;
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(this.startX, this.startY);
+                    this.ctx.lineTo(currentX, currentY);
+                    this.ctx.stroke();
+                }
+            }
+
+            handleMouseUp(e) {
+                if (!this.isDrawing || !this.currentImage) return;
+                
+                const rect = this.canvas.getBoundingClientRect();
+                const scaleX = this.canvas.width / rect.width;
+                const scaleY = this.canvas.height / rect.height;
+                const endX = (e.clientX - rect.left) * scaleX;
+                const endY = (e.clientY - rect.top) * scaleY;
+                
+                this.isDrawing = false;
+                
+                if (this.mode === 'box') {
+                    const box = {
+                        x1: Math.min(this.startX, endX),
+                        y1: Math.min(this.startY, endY),
+                        x2: Math.max(this.startX, endX),
+                        y2: Math.max(this.startY, endY)
+                    };
+                    
+                    if (box.x2 - box.x1 > 5 && box.y2 - box.y1 > 5) {
+                        this.boxes.push(box);
+                        this.undoStack.push({type: 'box', index: this.boxes.length - 1});
+                        this.redrawCanvas();
+                    }
+                } else if (this.mode === 'scale') {
+                    const lineLength = Math.sqrt(Math.pow(endX - this.startX, 2) + Math.pow(endY - this.startY, 2));
+                    if (lineLength > 10) {
+                        this.scaleLine = {
+                            x1: this.startX,
+                            y1: this.startY,
+                            x2: endX,
+                            y2: endY,
+                            length: lineLength
+                        };
+                        this.undoStack.push({type: 'scale'});
+                        this.calculateScaleRatio();
+                        this.redrawCanvas();
+                    }
+                } else if (this.mode === 'psd') {
+                    const lineLength = Math.sqrt(Math.pow(endX - this.startX, 2) + Math.pow(endY - this.startY, 2));
+                    if (lineLength > 10) {
+                        const psdLine = {
+                            x1: this.startX,
+                            y1: this.startY,
+                            x2: endX,
+                            y2: endY,
+                            length: lineLength
+                        };
+                        this.psdLines.push(psdLine);
+                        this.undoStack.push({type: 'psd', index: this.psdLines.length - 1});
+                        this.updatePSDDisplay();
+                        this.redrawCanvas();
+                    }
+                } else if (this.mode === 'vesicle') {
+                    // Add vesicle at click position
+                    this.addVesicle(endX, endY);
+                }
+            }
+
+            redrawCanvas() {
+                if (!this.currentImage) return;
+                
+                const img = new Image();
+                img.onload = () => {
+                    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                    this.ctx.drawImage(img, 0, 0, 1024, 1024);
+                    
+                    // Draw boxes
+                    this.ctx.strokeStyle = '#00ff00';
+                    this.ctx.lineWidth = 2;
+                    this.boxes.forEach((box, index) => {
+                        this.ctx.strokeRect(box.x1, box.y1, box.x2 - box.x1, box.y2 - box.y1);
+                        this.ctx.fillStyle = '#00ff00';
+                        this.ctx.font = '12px Arial';
+                        this.ctx.fillText(`Box ${index + 1}`, box.x1, box.y1 - 5);
+                    });
+                    
+                    // Draw scale line
+                    if (this.scaleLine) {
+                        this.ctx.strokeStyle = '#ff0000';
+                        this.ctx.lineWidth = 3;
+                        this.ctx.beginPath();
+                        this.ctx.moveTo(this.scaleLine.x1, this.scaleLine.y1);
+                        this.ctx.lineTo(this.scaleLine.x2, this.scaleLine.y2);
+                        this.ctx.stroke();
+                        
+                        this.ctx.fillStyle = '#ff0000';
+                        this.ctx.font = '12px Arial';
+                        this.ctx.fillText('500nm', this.scaleLine.x2 + 5, this.scaleLine.y2);
+                    }
+                    
+                    // Draw PSD lines
+                    this.ctx.strokeStyle = '#0000ff';
+                    this.ctx.lineWidth = 3;
+                    this.psdLines.forEach((psdLine, index) => {
+                        this.ctx.beginPath();
+                        this.ctx.moveTo(psdLine.x1, psdLine.y1);
+                        this.ctx.lineTo(psdLine.x2, psdLine.y2);
+                        this.ctx.stroke();
+                        
+                        this.ctx.fillStyle = '#0000ff';
+                        this.ctx.font = '12px Arial';
+                        this.ctx.fillText(`PSD ${index + 1}`, psdLine.x2 + 5, psdLine.y2);
+                    });
+                    
+                    // Draw vesicles
+                    this.drawVesicles();
+                    
+                    // Draw segmentation contours if they exist
+                    if (this.segmentationResults) {
+                        this.drawSegmentationContours();
+                    }
+                };
+                img.src = 'data:image/png;base64,' + this.currentImage;
+            }
+
+            async calculateScaleRatio() {
+                if (!this.scaleLine) return;
+                
+                try {
+                    // Convert the line length from display coordinates to original image coordinates
+                    let actualLineLength = this.scaleLine.length;
+                    
+                    // If we have image scaling info, we need to account for the scaling
+                    if (this.imageScaling) {
+                        // The line is drawn on the 512x512 display, but we need to scale it to original image size
+                        const scaleFactor = this.imageScaling.scale_factor;
+                        actualLineLength = this.scaleLine.length / scaleFactor;
+                        console.log('Scale line conversion:', {
+                            displayLength: this.scaleLine.length,
+                            scaleFactor: scaleFactor,
+                            actualLength: actualLineLength,
+                            imageSize: this.imageScaling.image_size,
+                            originalImageSize: {
+                                width: this.imageScaling.image_size.width / scaleFactor,
+                                height: this.imageScaling.image_size.height / scaleFactor
+                            }
+                        });
+                    }
+                    
+                    const response = await fetch('/calculate_scale', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            line_length_pixels: actualLineLength
+                        })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        this.scaleRatio = data.scale_ratio;
+                        document.getElementById('scaleRatio').textContent = this.scaleRatio.toFixed(2);
+                    }
+                } catch (error) {
+                    console.error('Error calculating scale:', error);
+                }
+            }
+
+            updatePSDDisplay() {
+                if (this.psdLines.length === 0) {
+                    document.getElementById('psdLength').textContent = 'Not measured';
+                    document.getElementById('psdLengthNm').textContent = '-';
+                    return;
+                }
+                
+                try {
+                    let measurements = [];
+                    
+                    this.psdLines.forEach((psdLine, index) => {
+                        // Convert the line length from display coordinates to original image coordinates
+                        let actualLineLength = psdLine.length;
+                        
+                        // If we have image scaling info, we need to account for the scaling
+                        if (this.imageScaling) {
+                            const scaleFactor = this.imageScaling.scale_factor;
+                            actualLineLength = psdLine.length / scaleFactor;
+                        }
+                        
+                        // Calculate PSD length in pixels
+                        const psdLengthPixels = actualLineLength;
+                        
+                        // Calculate PSD length in nm if we have scale ratio
+                        let psdLengthNm = null;
+                        if (this.scaleRatio) {
+                            psdLengthNm = psdLengthPixels / this.scaleRatio;
+                        }
+                        
+                        measurements.push({
+                            pixels: psdLengthPixels,
+                            nm: psdLengthNm
+                        });
+                    });
+                    
+                    // Update display with individual measurements
+                    if (this.psdLines.length === 1) {
+                        document.getElementById('psdLength').textContent = `${measurements[0].pixels.toFixed(1)} pixels`;
+                        if (measurements[0].nm !== null) {
+                            document.getElementById('psdLengthNm').textContent = `${measurements[0].nm.toFixed(1)} nm`;
+                        } else {
+                            document.getElementById('psdLengthNm').textContent = 'Set scale first';
+                        }
+                    } else {
+                        // Show individual measurements for multiple PSD lines
+                        const pixelTexts = measurements.map((m, i) => `PSD ${i+1}: ${m.pixels.toFixed(1)}px`).join(', ');
+                        const nmTexts = this.scaleRatio ? 
+                            measurements.map((m, i) => `PSD ${i+1}: ${m.nm.toFixed(1)}nm`).join(', ') : 
+                            'Set scale first';
+                        
+                        document.getElementById('psdLength').textContent = pixelTexts;
+                        document.getElementById('psdLengthNm').textContent = nmTexts;
+                    }
+                    
+                    console.log('PSD measurements:', measurements);
+                } catch (error) {
+                    console.error('Error updating PSD display:', error);
+                }
+            }
+
+            async processSegmentation() {
+                if (this.boxes.length === 0) {
+                    alert('Please draw at least one bounding box first.');
+                    return;
+                }
+                
+                if (!this.currentFilename) {
+                    alert('Please upload an image first.');
+                    return;
+                }
+                
+                this.loading.classList.add('show');
+                this.processBtn.disabled = true;
+                
+                try {
+                    console.log('Sending request with:', {
+                        boxes: this.boxes,
+                        scale_ratio: this.scaleRatio,
+                        filename: this.currentFilename,
+                        image_scaling: this.imageScaling
+                    });
+                    
+                    const response = await fetch('/process', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            boxes: this.boxes,
+                            scale_ratio: this.scaleRatio,
+                            filename: this.currentFilename,
+                            scale_factor: this.imageScaling?.scale_factor,
+                            image_offset: this.imageScaling?.image_offset,
+                            image_size: this.imageScaling?.image_size
+                        })
+                    });
+                    
+                    console.log('Response status:', response.status);
+                    const data = await response.json();
+                    console.log('Response data:', data);
+                    
+                    if (data.success) {
+                        console.log('Segmentation results received:', data.results);
+                        this.displayResults(data.results);
+                    } else {
+                        alert('Error processing segmentation: ' + data.error);
+                    }
+                } catch (error) {
+                    console.error('Error processing segmentation:', error);
+                    alert('Error processing segmentation: ' + error.message);
+                } finally {
+                    this.loading.classList.remove('show');
+                    this.processBtn.disabled = false;
+                }
+            }
+
+            displayResults(results) {
+                console.log('displayResults called with:', results);
+                this.results.style.display = 'block';
+                this.resultsContent.innerHTML = '';
+                
+                // Store results for drawing
+                this.segmentationResults = results;
+                console.log('Stored segmentation results:', this.segmentationResults);
+                
+                // Draw segmentation contours on canvas
+                console.log('About to draw segmentation contours...');
+                this.drawSegmentationContours();
+                
+                results.forEach((result, index) => {
+                    const resultDiv = document.createElement('div');
+                    resultDiv.className = 'result-item';
+                    
+                    const areaText = result.area_nm2 ? 
+                        `${result.area_pixels} pixels (${result.area_nm2.toFixed(2)} nm²)` :
+                        `${result.area_pixels} pixels`;
+                    
+                    resultDiv.innerHTML = `
+                        <div class="box-info">
+                            <span class="box-id">Box ${result.box_id + 1}</span>
+                            <span class="area-info">${areaText}</span>
+                        </div>
+                        <div>Contours: ${result.contours.length} detected</div>
+                    `;
+                    
+                    this.resultsContent.appendChild(resultDiv);
+                });
+            }
+
+            drawSegmentationContours() {
+                if (!this.segmentationResults) return;
+                
+                // Draw segmentation contours
+                this.ctx.strokeStyle = '#ff00ff'; // Magenta color for segmentation borders
+                this.ctx.lineWidth = 2;
+                this.ctx.setLineDash([]);
+                
+                this.segmentationResults.forEach((result, resultIndex) => {
+                    if (result.contours && result.contours.length > 0) {
+                        console.log(`Drawing contours for box ${result.box_id}:`, {
+                            contours_count: result.contours.length
+                        });
+                        
+                        // The contours are now in full image coordinates
+                        // We need to scale them down to display coordinates
+                        const scaleX = this.imageScaling ? this.imageScaling.scale_factor : 1.0;
+                        const scaleY = this.imageScaling ? this.imageScaling.scale_factor : 1.0;
+                        
+                        console.log(`Box ${result.box_id} scaling:`, {
+                            scaleX: scaleX,
+                            scaleY: scaleY,
+                            imageScaling: this.imageScaling
+                        });
+                        
+                        result.contours.forEach((contour, contourIndex) => {
+                            if (contour && contour.length > 0) {
+                                console.log(`Drawing contour ${contourIndex} with ${contour.length} points`);
+                                this.ctx.beginPath();
+                                
+                                // Scale contour points from full image coordinates to display coordinates
+                                contour.forEach((point, pointIndex) => {
+                                    const [x, y] = point;
+                                    
+                                    // Scale from full image coordinates to display coordinates
+                                    const displayX = x * scaleX;
+                                    const displayY = y * scaleY;
+                                    
+                                    if (pointIndex === 0) {
+                                        this.ctx.moveTo(displayX, displayY);
+                                    } else {
+                                        this.ctx.lineTo(displayX, displayY);
+                                    }
+                                    
+                                    // Debug first few points
+                                    if (pointIndex < 3) {
+                                        console.log(`Point ${pointIndex}: full_image(${x}, ${y}) -> display(${displayX}, ${displayY})`);
+                                    }
+                                });
+                                
+                                this.ctx.closePath();
+                                this.ctx.stroke();
+                            }
+                        });
+                    }
+                });
+            }
+
+            clearAll() {
+                this.boxes = [];
+                this.scaleLine = null;
+                this.scaleRatio = null;
+                this.psdLines = [];
+                this.vesicles = {};
+                this.currentNeuron = 1;
+                this.vesicleIdCounter = 0;
+                this.undoStack = [];
+                this.segmentationResults = null;
+                // Don't clear imageScaling as it's needed for the current image
+                document.getElementById('scaleRatio').textContent = 'Not set';
+                document.getElementById('psdLength').textContent = 'Not measured';
+                document.getElementById('psdLengthNm').textContent = '-';
+                this.updateVesicleDisplay();
+                this.results.style.display = 'none';
+                this.redrawCanvas();
+            }
+
+            undoLast() {
+                // Check if there are any items to undo
+                if (this.undoStack.length === 0) {
+                    console.log('Nothing to undo');
+                    return;
+                }
+                
+                // Get the last operation from the undo stack
+                const lastOperation = this.undoStack.pop();
+                
+                switch (lastOperation.type) {
+                    case 'box':
+                        if (this.boxes.length > 0) {
+                            this.boxes.pop();
+                            console.log('Undid last box');
+                        }
+                        break;
+                        
+                    case 'scale':
+                        this.scaleLine = null;
+                        this.scaleRatio = null;
+                        document.getElementById('scaleRatio').textContent = 'Not set';
+                        console.log('Undid scale line');
+                        break;
+                        
+                    case 'psd':
+                        if (this.psdLines.length > 0) {
+                            this.psdLines.pop();
+                            this.updatePSDDisplay();
+                            console.log('Undid last PSD line');
+                        }
+                        break;
+                        
+                    case 'vesicle':
+                        if (this.vesicles[lastOperation.neuron] && this.vesicles[lastOperation.neuron].length > 0) {
+                            this.vesicles[lastOperation.neuron].pop();
+                            this.updateVesicleDisplay();
+                            console.log(`Undid vesicle from neuron ${lastOperation.neuron}`);
+                        }
+                        break;
+                }
+                
+                this.redrawCanvas();
+            }
+
+
+            // Vesicle counting functions
+            addVesicle(x, y) {
+                if (!this.vesicles[this.currentNeuron]) {
+                    this.vesicles[this.currentNeuron] = [];
+                }
+                
+                const vesicle = {
+                    x: x,
+                    y: y,
+                    id: ++this.vesicleIdCounter
+                };
+                
+                this.vesicles[this.currentNeuron].push(vesicle);
+                this.undoStack.push({type: 'vesicle', neuron: this.currentNeuron, index: this.vesicles[this.currentNeuron].length - 1});
+                this.updateVesicleDisplay();
+                this.redrawCanvas();
+                console.log(`Added vesicle to neuron ${this.currentNeuron} at (${x.toFixed(1)}, ${y.toFixed(1)})`);
+            }
+
+            drawVesicles() {
+                const colors = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#feca57', '#ff9ff3', '#54a0ff'];
+                
+                Object.keys(this.vesicles).forEach(neuronId => {
+                    const neuronNum = parseInt(neuronId);
+                    const color = colors[(neuronNum - 1) % colors.length];
+                    const vesicles = this.vesicles[neuronId];
+                    
+                    vesicles.forEach((vesicle, index) => {
+                        // Draw vesicle dot
+                        this.ctx.fillStyle = color;
+                        this.ctx.beginPath();
+                        this.ctx.arc(vesicle.x, vesicle.y, 4, 0, 2 * Math.PI);
+                        this.ctx.fill();
+                        
+                        // Draw vesicle number
+                        this.ctx.fillStyle = '#000';
+                        this.ctx.font = '10px Arial';
+                        this.ctx.fillText(`${index + 1}`, vesicle.x + 6, vesicle.y - 6);
+                    });
+                });
+            }
+
+            nextNeuron() {
+                this.currentNeuron++;
+                this.updateVesicleDisplay();
+                console.log(`Switched to neuron ${this.currentNeuron}`);
+            }
+
+            prevNeuron() {
+                if (this.currentNeuron > 1) {
+                    this.currentNeuron--;
+                    this.updateVesicleDisplay();
+                    console.log(`Switched to neuron ${this.currentNeuron}`);
+                }
+            }
+
+            clearVesicles() {
+                this.vesicles = {};
+                this.currentNeuron = 1;
+                this.vesicleIdCounter = 0;
+                this.updateVesicleDisplay();
+                this.redrawCanvas();
+                console.log('Cleared all vesicles');
+            }
+
+            updateVesicleDisplay() {
+                const currentCount = this.vesicles[this.currentNeuron] ? this.vesicles[this.currentNeuron].length : 0;
+                document.getElementById('currentNeuron').textContent = this.currentNeuron;
+                document.getElementById('vesicleCount').textContent = currentCount;
+                
+                // Update summary
+                const summary = this.getVesicleSummary();
+                document.getElementById('vesicleSummary').textContent = summary;
+            }
+
+            getVesicleSummary() {
+                const neuronCounts = [];
+                Object.keys(this.vesicles).forEach(neuronId => {
+                    const count = this.vesicles[neuronId].length;
+                    if (count > 0) {
+                        neuronCounts.push(`Neuron ${neuronId}: ${count}`);
+                    }
+                });
+                
+                if (neuronCounts.length === 0) {
+                    return 'No vesicles counted yet';
+                }
+                
+                return neuronCounts.join(', ');
+            }
+        }
+
+        // Initialize the application
+        document.addEventListener('DOMContentLoaded', () => {
+            new MitochondriaSegmentation();
+        });
+    </script>
+</body>
+</html>
