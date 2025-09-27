@@ -55,9 +55,25 @@ def load_model():
         
     try:
         print("Loading SAM2 model...")
+        
+        # Set environment variable for better error reporting
+        import os
+        os.environ['HYDRA_FULL_ERROR'] = '1'
+        
+        # Test import first
+        try:
+            from sam2.modeling.backbones.hieradet import Hiera
+            print("✓ Hiera class imported successfully")
+        except Exception as import_error:
+            print(f"✗ Error importing Hiera: {import_error}")
+            return False
+        
         FINE_TUNED_MODEL_WEIGHTS = hf_hub_download(repo_id="rohitmalavathu/SAM2FineTunedMito", filename="fine_tuned_sam2_2000.torch")
         sam2_checkpoint = hf_hub_download(repo_id="rohitmalavathu/SAM2FineTunedMito", filename="sam2_hiera_small.pt")
         model_cfg = "sam2_hiera_s.yaml"
+        
+        print(f"Model config: {model_cfg}")
+        print(f"Checkpoint: {sam2_checkpoint}")
         
         sam2_model = build_sam2(model_cfg, sam2_checkpoint, device="cpu")
         predictor = SAM2ImagePredictor(sam2_model)
@@ -68,6 +84,8 @@ def load_model():
         return True
     except Exception as e:
         print(f"Error loading model: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
 def process_segmentation(image, boxes, scale_ratio=None):
