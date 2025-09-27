@@ -1139,6 +1139,13 @@
 
             displayResults(results) {
                 console.log('displayResults called with:', results);
+                console.log('Results structure:', results.map(r => ({
+                    box_id: r.box_id,
+                    area_pixels: r.area_pixels,
+                    contours_count: r.contours ? r.contours.length : 0,
+                    has_contours: !!r.contours
+                })));
+                
                 this.results.style.display = 'block';
                 this.resultsContent.innerHTML = '';
                 
@@ -1184,15 +1191,19 @@
                             contours_count: result.contours.length
                         });
                         
-                        // The contours are now in full image coordinates
-                        // We need to scale them down to display coordinates
-                        const scaleX = this.imageScaling ? this.imageScaling.scale_factor : 1.0;
-                        const scaleY = this.imageScaling ? this.imageScaling.scale_factor : 1.0;
+                        // The contours are in full image coordinates
+                        // We need to convert them to display coordinates
+                        const originalWidth = this.originalImageSize[1]; // width
+                        const originalHeight = this.originalImageSize[0]; // height
+                        const displayWidth = this.displayImageSize[1]; // display width
+                        const displayHeight = this.displayImageSize[0]; // display height
+                        const imageOffsetX = this.imageOffset.x;
+                        const imageOffsetY = this.imageOffset.y;
                         
-                        console.log(`Box ${result.box_id} scaling:`, {
-                            scaleX: scaleX,
-                            scaleY: scaleY,
-                            imageScaling: this.imageScaling
+                        console.log(`Box ${result.box_id} coordinate conversion:`, {
+                            originalSize: [originalWidth, originalHeight],
+                            displaySize: [displayWidth, displayHeight],
+                            imageOffset: [imageOffsetX, imageOffsetY]
                         });
                         
                         result.contours.forEach((contour, contourIndex) => {
@@ -1200,13 +1211,17 @@
                                 console.log(`Drawing contour ${contourIndex} with ${contour.length} points`);
                                 this.ctx.beginPath();
                                 
-                                // Scale contour points from full image coordinates to display coordinates
+                                // Convert contour points from full image coordinates to display coordinates
                                 contour.forEach((point, pointIndex) => {
                                     const [x, y] = point;
                                     
-                                    // Scale from full image coordinates to display coordinates
-                                    const displayX = x * scaleX;
-                                    const displayY = y * scaleY;
+                                    // Scale from original image to display size
+                                    const scaleX = displayWidth / originalWidth;
+                                    const scaleY = displayHeight / originalHeight;
+                                    
+                                    // Scale and offset to display coordinates
+                                    const displayX = (x * scaleX) + imageOffsetX;
+                                    const displayY = (y * scaleY) + imageOffsetY;
                                     
                                     if (pointIndex === 0) {
                                         this.ctx.moveTo(displayX, displayY);
@@ -1216,7 +1231,7 @@
                                     
                                     // Debug first few points
                                     if (pointIndex < 3) {
-                                        console.log(`Point ${pointIndex}: full_image(${x}, ${y}) -> display(${displayX}, ${displayY})`);
+                                        console.log(`Point ${pointIndex}: original(${x}, ${y}) -> display(${displayX}, ${displayY})`);
                                     }
                                 });
                                 
