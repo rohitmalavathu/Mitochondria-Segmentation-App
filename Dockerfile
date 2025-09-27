@@ -1,22 +1,16 @@
-# Use the official Python image as a base
-FROM python:3.9-slim-buster
+# Use a pre-built image with OpenCV
+FROM python:3.9-slim
 
 # Set the working directory in the container
 WORKDIR /app
 
-# Install system dependencies for OpenCV and other libraries
+# Install minimal system dependencies
 RUN apt-get update && apt-get install -y \
-    libgl1-mesa-glx \
     libglib2.0-0 \
     libsm6 \
     libxext6 \
-    libxrender-dev \
+    libxrender1 \
     libgomp1 \
-    libgthread-2.0-0 \
-    libgtk-3-0 \
-    libavcodec-dev \
-    libavformat-dev \
-    libswscale-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install Python dependencies
