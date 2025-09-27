@@ -191,65 +191,70 @@ def index():
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
-    # Clean up old files before processing new upload
-    cleanup_old_uploads()
-    
-    print(f"Content-Length header: {request.headers.get('Content-Length', 'Not set')}")
-    print(f"Content-Type header: {request.headers.get('Content-Type', 'Not set')}")
-    print(f"Request method: {request.method}")
-    print(f"Request content length: {request.content_length}")
-    
-    if 'file' not in request.files:
-        return jsonify({'error': 'No file provided'}), 400
-    
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({'error': 'No file selected'}), 400
-    
-    if file:
-        # Generate a unique filename to avoid conflicts
-        import uuid
-        file_extension = os.path.splitext(file.filename)[1]
-        filename = f"{uuid.uuid4()}{file_extension}"
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        file.save(filepath)
+    try:
+        # Clean up old files before processing new upload
+        cleanup_old_uploads()
         
-        # Load and process image
-        image = cv2.imread(filepath)
-        if image is None:
-            # Try with PIL for TIFF and other formats that OpenCV might not support
-            try:
-                pil_image = Image.open(filepath)
-                print(f"PIL loaded image: {file.filename}, mode: {pil_image.mode}, size: {pil_image.size}")
-                
-                # If it's a TIFF file, convert to PNG to reduce file size
-                if file_extension.lower() in ['.tif', '.tiff']:
-                    print("Converting TIFF to PNG to reduce file size...")
-                    # Convert to RGB if needed
-                    if pil_image.mode != 'RGB':
-                        pil_image = pil_image.convert('RGB')
+        print(f"Content-Length header: {request.headers.get('Content-Length', 'Not set')}")
+        print(f"Content-Type header: {request.headers.get('Content-Type', 'Not set')}")
+        print(f"Request method: {request.method}")
+        print(f"Request content length: {request.content_length}")
+        
+        if 'file' not in request.files:
+            print("ERROR: No file in request.files")
+            return jsonify({'error': 'No file provided'}), 400
+        
+        file = request.files['file']
+        print(f"File received: {file.filename}, content type: {file.content_type}")
+        
+        if file.filename == '':
+            print("ERROR: Empty filename")
+            return jsonify({'error': 'No file selected'}), 400
+        
+        if file:
+            # Generate a unique filename to avoid conflicts
+            import uuid
+            file_extension = os.path.splitext(file.filename)[1]
+            filename = f"{uuid.uuid4()}{file_extension}"
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            file.save(filepath)
+            
+            # Load and process image
+            image = cv2.imread(filepath)
+            if image is None:
+                # Try with PIL for TIFF and other formats that OpenCV might not support
+                try:
+                    pil_image = Image.open(filepath)
+                    print(f"PIL loaded image: {file.filename}, mode: {pil_image.mode}, size: {pil_image.size}")
                     
-                    # Save as PNG temporarily
-                    png_filename = filename.replace(file_extension, '.png')
-                    png_filepath = os.path.join(app.config['UPLOAD_FOLDER'], png_filename)
-                    pil_image.save(png_filepath, 'PNG', optimize=True)
+                    # If it's a TIFF file, convert to PNG to reduce file size
+                    if file_extension.lower() in ['.tif', '.tiff']:
+                        print("Converting TIFF to PNG to reduce file size...")
+                        # Convert to RGB if needed
+                        if pil_image.mode != 'RGB':
+                            pil_image = pil_image.convert('RGB')
+                        
+                        # Save as PNG temporarily
+                        png_filename = filename.replace(file_extension, '.png')
+                        png_filepath = os.path.join(app.config['UPLOAD_FOLDER'], png_filename)
+                        pil_image.save(png_filepath, 'PNG', optimize=True)
+                        
+                        # Clean up original TIFF file
+                        try:
+                            os.remove(filepath)
+                            print(f"Removed original TIFF file: {filename}")
+                        except:
+                            pass
+                        
+                        # Update filepath to use the PNG version
+                        filepath = png_filepath
+                        filename = png_filename
+                        print(f"Converted TIFF to PNG: {png_filename}")
                     
-                    # Clean up original TIFF file
-                    try:
-                        os.remove(filepath)
-                        print(f"Removed original TIFF file: {filename}")
-                    except:
-                        pass
-                    
-                    # Update filepath to use the PNG version
-                    filepath = png_filepath
-                    filename = png_filename
-                    print(f"Converted TIFF to PNG: {png_filename}")
-                
-                # Convert PIL image to OpenCV format
-                image = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
-            except Exception as e:
-                return jsonify({'error': 'Invalid image file. Supported formats: PNG, JPG, JPEG, TIFF'}), 400
+                    # Convert PIL image to OpenCV format
+                    image = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
+                except Exception as e:
+                    return jsonify({'error': 'Invalid image file. Supported formats: PNG, JPG, JPEG, TIFF'}), 400
         
         # Convert to RGB
         image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
@@ -302,6 +307,12 @@ def upload_file():
             'image_offset': {'x': start_x, 'y': start_y},
             'image_size': {'width': new_width, 'height': new_height}
         })
+    
+    except Exception as e:
+        print(f"ERROR in upload_file: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': f'Upload failed: {str(e)}'}), 500
 
 @app.route('/process', methods=['POST'])
 def process_boxes():
