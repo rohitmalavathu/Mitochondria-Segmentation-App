@@ -217,9 +217,32 @@ def upload_file():
             # Try with PIL for TIFF and other formats that OpenCV might not support
             try:
                 pil_image = Image.open(filepath)
-                # Convert PIL image to RGB first, then to OpenCV format
-                if pil_image.mode != 'RGB':
-                    pil_image = pil_image.convert('RGB')
+                print(f"PIL loaded image: {file.filename}, mode: {pil_image.mode}, size: {pil_image.size}")
+                
+                # If it's a TIFF file, convert to PNG to reduce file size
+                if file_extension.lower() in ['.tif', '.tiff']:
+                    print("Converting TIFF to PNG to reduce file size...")
+                    # Convert to RGB if needed
+                    if pil_image.mode != 'RGB':
+                        pil_image = pil_image.convert('RGB')
+                    
+                    # Save as PNG temporarily
+                    png_filename = filename.replace(file_extension, '.png')
+                    png_filepath = os.path.join(app.config['UPLOAD_FOLDER'], png_filename)
+                    pil_image.save(png_filepath, 'PNG', optimize=True)
+                    
+                    # Clean up original TIFF file
+                    try:
+                        os.remove(filepath)
+                        print(f"Removed original TIFF file: {filename}")
+                    except:
+                        pass
+                    
+                    # Update filepath to use the PNG version
+                    filepath = png_filepath
+                    filename = png_filename
+                    print(f"Converted TIFF to PNG: {png_filename}")
+                
                 # Convert PIL image to OpenCV format
                 image = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
             except Exception as e:
