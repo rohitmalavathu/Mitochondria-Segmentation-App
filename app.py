@@ -110,11 +110,35 @@ def process_segmentation(image, boxes, scale_ratio=None):
         y1, y2 = sorted([y1, y2])
         
         # Crop the image
+        print(f"Box coordinates: x1={x1}, y1={y1}, x2={x2}, y2={y2}")
+        print(f"Image shape: {image.shape}")
+        
+        # Validate coordinates
+        if x1 >= x2 or y1 >= y2:
+            print(f"Invalid box coordinates: x1={x1}, y1={y1}, x2={x2}, y2={y2}")
+            continue
+            
+        if x1 < 0 or y1 < 0 or x2 > image.shape[1] or y2 > image.shape[0]:
+            print(f"Box coordinates out of bounds: x1={x1}, y1={y1}, x2={x2}, y2={y2}, image_shape={image.shape}")
+            continue
+        
         cropped_image = image[y1:y2, x1:x2]
+        print(f"Cropped image shape: {cropped_image.shape}")
+        
+        if cropped_image.size == 0:
+            print(f"Empty cropped image for box {i}")
+            continue
+            
         original_height, original_width = cropped_image.shape[:2]
         
         # Resize for model input
-        cropped_image_resized = cv2.resize(cropped_image, (256, 256))
+        try:
+            cropped_image_resized = cv2.resize(cropped_image, (256, 256))
+            print(f"Resized image shape: {cropped_image_resized.shape}")
+        except Exception as resize_error:
+            print(f"Error resizing image: {resize_error}")
+            print(f"Cropped image details: shape={cropped_image.shape}, dtype={cropped_image.dtype}")
+            continue
         
         # Convert to 3-channel if grayscale
         if cropped_image_resized.ndim == 2:
@@ -480,6 +504,16 @@ def process_boxes():
             int(y2_adjusted * scale_y)
         ]
         print(f"Scaled box coordinates: {scaled_box}")
+        
+        # Validate scaled coordinates
+        if scaled_box[0] >= scaled_box[2] or scaled_box[1] >= scaled_box[3]:
+            print(f"Invalid scaled box coordinates: {scaled_box}")
+            continue
+            
+        if scaled_box[0] < 0 or scaled_box[1] < 0 or scaled_box[2] > original_width or scaled_box[3] > original_height:
+            print(f"Scaled box coordinates out of bounds: {scaled_box}, image_size=({original_width}, {original_height})")
+            continue
+            
         scaled_boxes.append(scaled_box)
     
     # Process segmentation
