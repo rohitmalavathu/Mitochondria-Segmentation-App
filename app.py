@@ -2,7 +2,6 @@ from flask import Flask, render_template, request, jsonify
 import os
 import time
 import glob
-import cv2
 import numpy as np
 from PIL import Image
 
@@ -56,16 +55,9 @@ def upload_file():
         file.save(filepath)
         
         try:
-            # Load and process the image
-            image = cv2.imread(filepath)
-            if image is None:
-                return jsonify({'error': 'Invalid image file'}), 400
-            
-            # Convert BGR to RGB
-            image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-            
-            # Get image dimensions
-            height, width = image_rgb.shape[:2]
+            # Load and process the image using PIL
+            image = Image.open(filepath)
+            width, height = image.size
             
             # Return success with file info and image dimensions
             return jsonify({
@@ -98,11 +90,9 @@ def process_boxes():
             return jsonify({'error': 'File not found'}), 404
         
         # Load the image for processing
-        image = cv2.imread(filepath)
+        image = Image.open(filepath)
         if image is None:
             return jsonify({'error': 'Could not load image'}), 400
-        
-        image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         
         # Process each box
         results = []
@@ -116,35 +106,24 @@ def process_boxes():
             x1, x2 = sorted([x1, x2])
             y1, y2 = sorted([y1, y2])
             
-            # Crop the image to the box region
-            cropped_image = image_rgb[y1:y2, x1:x2]
-            
-            if cropped_image.size == 0:
-                continue
-            
-            # Simple segmentation using thresholding (mock for now)
-            gray = cv2.cvtColor(cropped_image, cv2.COLOR_RGB2GRAY)
-            _, binary_mask = cv2.threshold(gray, 127, 255, cv2.THRESH_BINARY)
-            
-            # Find contours
-            contours, _ = cv2.findContours(binary_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            
-            # Calculate area
-            area_pixels = np.sum(binary_mask > 0)
+            # Mock segmentation results for now
+            area_pixels = int((x2 - x1) * (y2 - y1) * 0.7)
             area_nm2 = None
             if scale_ratio:
                 area_nm2 = area_pixels / (scale_ratio ** 2)
             
-            # Convert contours to original image coordinates
-            contour_points = []
-            for contour in contours:
-                if contour is not None and len(contour) > 0:
-                    adjusted_contour = contour.reshape(-1, 2) + [x1, y1]
-                    contour_points.append(adjusted_contour.tolist())
+            # Create mock contour (rectangle around the box with some padding)
+            padding = 10
+            contour_points = [[
+                [x1 + padding, y1 + padding], 
+                [x2 - padding, y1 + padding], 
+                [x2 - padding, y2 - padding], 
+                [x1 + padding, y2 - padding]
+            ]]
             
             results.append({
                 'box_id': i,
-                'area_pixels': int(area_pixels),
+                'area_pixels': area_pixels,
                 'area_nm2': float(area_nm2) if area_nm2 else None,
                 'contours': contour_points,
                 'box_coords': [x1, y1, x2, y2]
