@@ -46,7 +46,7 @@ gcloud run deploy $SERVICE_NAME \
   --memory 8Gi \
   --cpu 4 \
   --timeout 3600 \
-  --max-instances 5 \
+  --max-instances 3 \
   --port 8080
 
 # Get the service URL

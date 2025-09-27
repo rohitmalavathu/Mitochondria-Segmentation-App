@@ -1,18 +1,21 @@
-from flask import Flask, render_template, request, jsonify
+import cv2
+import numpy as np
+from scipy.ndimage import gaussian_filter
+import torch
+from flask import Flask, request, jsonify, render_template
+from werkzeug.utils import secure_filename
 import os
+import base64
+from io import BytesIO
+from PIL import Image
+import json
+from huggingface_hub import hf_hub_download
 import time
 import glob
-import numpy as np
-from PIL import Image, ImageFilter
-from scipy.ndimage import gaussian_filter
-# import torch
-# from huggingface_hub import hf_hub_download
 
 app = Flask(__name__)
-
-# Configure upload folder
-UPLOAD_FOLDER = 'uploads'
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max file size
+app.config['UPLOAD_FOLDER'] = 'uploads'
 
 # Create upload directory if it doesn't exist
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
@@ -24,36 +27,28 @@ model_loaded = False
 model_loading_error = None
 
 def load_model():
-    """Load the SAM2 model with fallback to mock mode"""
-    global sam2_model, predictor, model_loaded, model_loading_error
+    """Load the SAM2 model and fine-tuned weights"""
+    global sam2_model, predictor, model_loaded
     
     if model_loaded:
         return True
         
     try:
-        print("Attempting to load SAM2 model...")
+        print("Loading SAM2 model...")
+        FINE_TUNED_MODEL_WEIGHTS = hf_hub_download(repo_id="rohitmalavathu/SAM2FineTunedMito", filename="fine_tuned_sam2_2000.torch")
+        sam2_checkpoint = hf_hub_download(repo_id="rohitmalavathu/SAM2FineTunedMito", filename="sam2_hiera_small.pt")
+        model_cfg = "sam2_hiera_s.yaml"
         
-        # Try to import SAM2 components
-        try:
-            from sam2.build_sam import build_sam2
-            from sam2.sam2_image_predictor import SAM2ImagePredictor
-        except ImportError as e:
-            print(f"SAM2 not available: {e}")
-            model_loading_error = "SAM2 model not available - using mock mode"
-            model_loaded = True
-            return True
+        sam2_model = build_sam2(model_cfg, sam2_checkpoint, device="cpu")
+        predictor = SAM2ImagePredictor(sam2_model)
+        predictor.model.load_state_dict(torch.load(FINE_TUNED_MODEL_WEIGHTS, map_location=torch.device('cpu'), weights_only=False))
         
-        # For now, skip SAM2 model loading due to deployment complexity
-        print("SAM2 model loading disabled for deployment - using mock mode")
-        model_loading_error = "SAM2 model loading disabled for deployment - using mock mode"
         model_loaded = True
+        print("Model loaded successfully!")
         return True
-            
     except Exception as e:
-        print(f"Unexpected error during model loading: {e}")
-        model_loading_error = f"Model loading error: {str(e)} - using mock mode"
-        model_loaded = True
-        return True
+        print(f"Error loading model: {e}")
+        return False
 
 def cleanup_old_uploads():
     """Clean up uploaded files older than 1 hour"""
@@ -75,11 +70,8 @@ def cleanup_old_uploads():
         print(f"Error during cleanup: {e}")
 
 def process_segmentation(image, boxes, scale_ratio=None):
-    """Process segmentation for multiple boxes with real SAM2 or fallback to mock"""
+    """Process segmentation for multiple boxes"""
     results = []
-    
-    # Load model if not already loaded
-    load_model()
     
     for i, box in enumerate(boxes):
         # Handle both list and dict formats
@@ -92,86 +84,77 @@ def process_segmentation(image, boxes, scale_ratio=None):
         x1, x2 = sorted([x1, x2])
         y1, y2 = sorted([y1, y2])
         
-        print(f"Box {i}: Processing box at ({x1}, {y1}, {x2}, {y2})")
-        
-        # Crop the image to the box region
+        # Crop the image
         cropped_image = image[y1:y2, x1:x2]
         original_height, original_width = cropped_image.shape[:2]
         
-        if cropped_image.size == 0:
-            continue
+        # Resize for model input
+        cropped_image_resized = cv2.resize(cropped_image, (256, 256))
         
-        # Enhanced mock processing with better segmentation simulation
-        try:
-            # Convert to grayscale for processing
-            if len(cropped_image.shape) == 3:
-                gray_image = np.mean(cropped_image, axis=2)
-            else:
-                gray_image = cropped_image
+        # Convert to 3-channel if grayscale
+        if cropped_image_resized.ndim == 2:
+            cropped_image_resized = np.stack([cropped_image_resized] * 3, axis=-1)
+        
+        # Process with SAM2
+        with torch.no_grad():
+            predictor.set_image(cropped_image_resized)
+            masks, scores, logits = predictor.predict(
+                point_coords=[[[128, 128]]],
+                point_labels=[[1]]
+            )
+        
+        # Process masks
+        sorted_masks = masks[np.argsort(scores)][::-1]
+        seg_map = np.zeros_like(sorted_masks[0], dtype=np.uint8)
+        occupancy_mask = np.zeros_like(sorted_masks[0], dtype=bool)
+        
+        for j in range(sorted_masks.shape[0]):
+            mask = sorted_masks[j]
+            if (mask * occupancy_mask).sum() / mask.sum() > 0.15:
+                continue
             
-            # Apply some basic image processing to simulate segmentation
-            # Use thresholding to find regions
-            threshold = np.mean(gray_image) * 0.8
-            binary_mask = (gray_image > threshold).astype(np.uint8)
-            
-            # Apply morphological operations to clean up the mask
-            from scipy.ndimage import binary_fill_holes, binary_erosion, binary_dilation
-            
-            # Fill holes and clean up
-            binary_mask = binary_fill_holes(binary_mask).astype(np.uint8)
-            binary_mask = binary_erosion(binary_dilation(binary_mask, iterations=2), iterations=1).astype(np.uint8)
-            
-            # Calculate area
-            area_pixels = np.sum(binary_mask)
-            area_nm2 = None
-            if scale_ratio:
-                area_nm2 = area_pixels / (scale_ratio ** 2)
-            
-            # Create contour points by finding edges
-            # Simple edge detection
-            edges = np.abs(np.diff(binary_mask, axis=0)) + np.abs(np.diff(binary_mask, axis=1))
-            edge_points = np.where(edges > 0)
-            
-            if len(edge_points[0]) > 0:
-                # Create a simple contour from edge points
-                contour_points = [[
-                    [x1 + 10, y1 + 10], 
-                    [x2 - 10, y1 + 10], 
-                    [x2 - 10, y2 - 10], 
-                    [x1 + 10, y2 - 10]
-                ]]
-            else:
-                # Fallback to simple rectangle
-                padding = 10
-                contour_points = [[
-                    [x1 + padding, y1 + padding], 
-                    [x2 - padding, y1 + padding], 
-                    [x2 - padding, y2 - padding], 
-                    [x1 + padding, y2 - padding]
-                ]]
-            
-            print(f"Box {i}: Enhanced mock segmentation - Area: {area_pixels} pixels")
-            
-        except Exception as e:
-            print(f"Box {i}: Enhanced processing failed: {e}, using simple mock")
-            # Fallback to simple mock processing
-            area_pixels = int((x2 - x1) * (y2 - y1) * 0.7)
-            area_nm2 = area_pixels / (scale_ratio ** 2) if scale_ratio else None
-            padding = 10
-            contour_points = [[
-                [x1 + padding, y1 + padding], 
-                [x2 - padding, y1 + padding], 
-                [x2 - padding, y2 - padding], 
-                [x1 + padding, y2 - padding]
-            ]]
-            print(f"Box {i}: Simple mock segmentation - Area: {area_pixels} pixels")
+            mask_bool = mask.astype(bool)
+            mask_bool[occupancy_mask] = False
+            seg_map[mask_bool] = j + 1
+            occupancy_mask[mask_bool] = True
+        
+        # Smooth the segmentation
+        seg_mask = gaussian_filter(seg_map.astype(float), sigma=2)
+        smoothed_mask = (seg_mask > 0.5).astype(np.uint8)
+        segmentation_resized = cv2.resize(smoothed_mask, (original_width, original_height))
+        
+        # Calculate area using the resized segmentation (actual cropped box size)
+        area_pixels = np.sum(segmentation_resized)
+        # Convert pixels to nm²: area_pixels / (pixels_per_nm)²
+        area_nm2 = area_pixels / (scale_ratio ** 2) if scale_ratio else area_pixels
+        
+        # Find contours for outline
+        segmentation_255 = segmentation_resized * 255
+        contours, _ = cv2.findContours(segmentation_255, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
+        # Convert contours to list for JSON serialization
+        # Adjust contours to be relative to the full image coordinates
+        contour_points = []
+        for contour in contours:
+            if contour is not None and len(contour) > 0:
+                # Adjust contour points to be relative to the full image
+                adjusted_contour = contour.reshape(-1, 2) + [x1, y1]
+                contour_points.append(adjusted_contour.tolist())
+        
+        print(f"Box {i}: Found {len(contour_points)} contours")
+        for j, contour in enumerate(contour_points):
+            print(f"  Contour {j}: {len(contour)} points")
+            if len(contour) > 0:
+                print(f"    First point: {contour[0]}")
+                print(f"    Last point: {contour[-1]}")
         
         results.append({
             'box_id': i,
             'area_pixels': int(area_pixels),
-            'area_nm2': float(area_nm2) if area_nm2 else None,
+            'area_nm2': float(area_nm2) if scale_ratio else None,
             'contours': contour_points,
-            'box_coords': [x1, y1, x2, y2]
+            'mask_shape': smoothed_mask.shape,
+            'box_coords': [x1, y1, x2, y2]  # Add original box coordinates for display
         })
     
     return results
@@ -198,27 +181,30 @@ def upload_file():
         file.save(filepath)
         
         try:
-            # Load and process the image using PIL
-            image = Image.open(filepath)
-            width, height = image.size
+            # Load and process the image using OpenCV
+            image = cv2.imread(filepath)
+            if image is None:
+                return jsonify({'error': 'Invalid image file'}), 400
+            
+            # Convert BGR to RGB
+            image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            height, width = image_rgb.shape[:2]
             
             # Convert image to base64 for frontend display
-            import base64
-            from io import BytesIO
-            
             # Resize image to fit canvas (1024x1024)
             canvas_size = 1024
-            image.thumbnail((canvas_size, canvas_size), Image.Resampling.LANCZOS)
-            
-            # Convert to base64
-            buffered = BytesIO()
-            image.save(buffered, format="PNG")
-            img_str = base64.b64encode(buffered.getvalue()).decode()
-            
-            # Calculate scaling factors
             scale_factor = min(canvas_size / width, canvas_size / height)
             scaled_width = int(width * scale_factor)
             scaled_height = int(height * scale_factor)
+            
+            # Resize image
+            resized_image = cv2.resize(image_rgb, (scaled_width, scaled_height))
+            
+            # Convert to PIL for base64 encoding
+            pil_image = Image.fromarray(resized_image)
+            buffered = BytesIO()
+            pil_image.save(buffered, format="PNG")
+            img_str = base64.b64encode(buffered.getvalue()).decode()
             
             # Calculate offset to center image
             offset_x = (canvas_size - scaled_width) // 2
@@ -259,15 +245,18 @@ def process_boxes():
             return jsonify({'error': 'File not found'}), 404
         
         # Load the image for processing
-        image = Image.open(filepath)
+        image = cv2.imread(filepath)
         if image is None:
             return jsonify({'error': 'Could not load image'}), 400
         
-        # Convert PIL image to numpy array
-        image_array = np.array(image)
+        image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        
+        # Load model if not already loaded
+        if not load_model():
+            return jsonify({'error': 'Failed to load SAM2 model'}), 500
         
         # Process segmentation using the real function
-        results = process_segmentation(image_array, boxes, scale_ratio)
+        results = process_segmentation(image_rgb, boxes, scale_ratio)
         
         # Clean up uploaded file after processing
         try:
