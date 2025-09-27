@@ -207,7 +207,6 @@ def upload_file():
         if image is None:
             # Try with PIL for TIFF and other formats that OpenCV might not support
             try:
-                from PIL import Image
                 pil_image = Image.open(filepath)
                 # Convert PIL image to OpenCV format
                 image = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
