@@ -541,13 +541,17 @@
                     });
 
                     let data;
+                    const responseText = await response.text();
+                    console.log('Raw response text length:', responseText.length);
+                    console.log('Response text preview:', responseText.substring(0, 200));
+                    
                     try {
-                        data = await response.json();
+                        data = JSON.parse(responseText);
                         console.log('Upload response data:', data);
                         console.log('Response keys:', Object.keys(data));
                     } catch (jsonError) {
                         console.error('JSON parsing error:', jsonError);
-                        console.log('Response text:', await response.text());
+                        console.log('Full response text:', responseText);
                         throw new Error('Invalid response format from server');
                     }
                     
