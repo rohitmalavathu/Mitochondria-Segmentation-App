@@ -205,7 +205,16 @@ def upload_file():
         # Load and process image
         image = cv2.imread(filepath)
         if image is None:
-            return jsonify({'error': 'Invalid image file'}), 400
+            # Try with PIL for TIFF and other formats that OpenCV might not support
+            try:
+                from PIL import Image
+                pil_image = Image.open(filepath)
+                # Convert PIL image to OpenCV format
+                image = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
+                print(f"Loaded image using PIL: {file.filename}")
+            except Exception as e:
+                print(f"Failed to load image with PIL: {e}")
+                return jsonify({'error': 'Invalid image file. Supported formats: PNG, JPG, JPEG, TIFF'}), 400
         
         # Convert to RGB
         image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
