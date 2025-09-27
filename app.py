@@ -199,6 +199,8 @@ def upload_file():
         print(f"Content-Type header: {request.headers.get('Content-Type', 'Not set')}")
         print(f"Request method: {request.method}")
         print(f"Request content length: {request.content_length}")
+        print(f"Request files keys: {list(request.files.keys())}")
+        print(f"Request form keys: {list(request.form.keys())}")
         
         if 'file' not in request.files:
             print("ERROR: No file in request.files")
@@ -206,18 +208,49 @@ def upload_file():
         
         file = request.files['file']
         print(f"File received: {file.filename}, content type: {file.content_type}")
+        print(f"File size: {file.content_length if hasattr(file, 'content_length') else 'Unknown'}")
         
         if file.filename == '':
             print("ERROR: Empty filename")
             return jsonify({'error': 'No file selected'}), 400
         
+        # Check if filename has valid characters (more permissive)
+        import re
+        if not re.match(r'^[a-zA-Z0-9._\s-]+$', file.filename):
+            print(f"ERROR: Invalid filename characters: {file.filename}")
+            return jsonify({'error': 'Invalid filename characters'}), 400
+        
+        # Try to secure the filename to see if that's causing issues
+        try:
+            secure_name = secure_filename(file.filename)
+            print(f"Secure filename: {secure_name}")
+            if not secure_name:
+                print("ERROR: secure_filename returned empty string")
+                return jsonify({'error': 'Invalid filename format'}), 400
+        except Exception as e:
+            print(f"ERROR with secure_filename: {e}")
+            return jsonify({'error': f'Filename validation failed: {str(e)}'}), 400
+        
+        # Check file extension
+        file_extension = os.path.splitext(file.filename)[1].lower()
+        allowed_extensions = ['.png', '.jpg', '.jpeg', '.tif', '.tiff']
+        if file_extension not in allowed_extensions:
+            print(f"ERROR: Unsupported file extension: {file_extension}")
+            return jsonify({'error': f'Unsupported file extension: {file_extension}. Allowed: {", ".join(allowed_extensions)}'}), 400
+        
         if file:
             # Generate a unique filename to avoid conflicts
             import uuid
-            file_extension = os.path.splitext(file.filename)[1]
             filename = f"{uuid.uuid4()}{file_extension}"
             filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-            file.save(filepath)
+            
+            try:
+                print(f"Saving file to: {filepath}")
+                file.save(filepath)
+                print(f"File saved successfully: {filename}")
+            except Exception as e:
+                print(f"ERROR saving file: {e}")
+                return jsonify({'error': f'Failed to save file: {str(e)}'}), 500
             
             # Load and process image
             image = cv2.imread(filepath)
