@@ -202,12 +202,38 @@ def upload_file():
             image = Image.open(filepath)
             width, height = image.size
             
-            # Return success with file info and image dimensions
+            # Convert image to base64 for frontend display
+            import base64
+            from io import BytesIO
+            
+            # Resize image to fit canvas (1024x1024)
+            canvas_size = 1024
+            image.thumbnail((canvas_size, canvas_size), Image.Resampling.LANCZOS)
+            
+            # Convert to base64
+            buffered = BytesIO()
+            image.save(buffered, format="PNG")
+            img_str = base64.b64encode(buffered.getvalue()).decode()
+            
+            # Calculate scaling factors
+            scale_factor = min(canvas_size / width, canvas_size / height)
+            scaled_width = int(width * scale_factor)
+            scaled_height = int(height * scale_factor)
+            
+            # Calculate offset to center image
+            offset_x = (canvas_size - scaled_width) // 2
+            offset_y = (canvas_size - scaled_height) // 2
+            
+            # Return success with image data and scaling info
             return jsonify({
                 'success': True, 
                 'filename': filename,
                 'width': width,
                 'height': height,
+                'image': f"data:image/png;base64,{img_str}",
+                'scale_factor': scale_factor,
+                'image_offset': {'x': offset_x, 'y': offset_y},
+                'image_size': {'width': scaled_width, 'height': scaled_height},
                 'message': 'File uploaded successfully'
             })
         except Exception as e:

@@ -560,9 +560,17 @@
                 img.onload = () => {
                     this.canvas.width = 1024;
                     this.canvas.height = 1024;
-                    this.ctx.drawImage(img, 0, 0, 1024, 1024);
+                    this.ctx.clearRect(0, 0, 1024, 1024);
+                    
+                    // Draw image centered on canvas
+                    const offsetX = this.imageScaling.image_offset.x;
+                    const offsetY = this.imageScaling.image_offset.y;
+                    const scaledWidth = this.imageScaling.image_size.width;
+                    const scaledHeight = this.imageScaling.image_size.height;
+                    
+                    this.ctx.drawImage(img, offsetX, offsetY, scaledWidth, scaledHeight);
                 };
-                img.src = 'data:image/png;base64,' + imageData;
+                img.src = imageData; // imageData already includes the data URL prefix
             }
 
             handleMouseDown(e) {
