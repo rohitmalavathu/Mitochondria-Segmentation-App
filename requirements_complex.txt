@@ -1,9 +1,0 @@
-Flask==2.3.3
-Werkzeug==2.3.7
-opencv-python==4.8.1.78
-numpy==1.24.3
-Pillow==10.0.1
-torch==2.0.1
-torchvision==0.15.2
-gunicorn==21.2.0
-huggingface_hub==0.19.4
