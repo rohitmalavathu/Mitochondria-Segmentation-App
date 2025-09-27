@@ -35,13 +35,42 @@ def load_model():
         
     try:
         print("Loading SAM2 model...")
-        FINE_TUNED_MODEL_WEIGHTS = hf_hub_download(repo_id="rohitmalavathu/SAM2FineTunedMito", filename="fine_tuned_sam2_2000.torch")
-        sam2_checkpoint = hf_hub_download(repo_id="rohitmalavathu/SAM2FineTunedMito", filename="sam2_hiera_small.pt")
-        model_cfg = "sam2_hiera_s.yaml"
+        
+        # Try to import SAM2 components
+        try:
+            from sam2.build_sam import build_sam2
+            from sam2.sam2_image_predictor import SAM2ImagePredictor
+        except ImportError as e:
+            print(f"SAM2 not available: {e}")
+            return False
+        
+        # Download model files
+        try:
+            FINE_TUNED_MODEL_WEIGHTS = hf_hub_download(repo_id="rohitmalavathu/SAM2FineTunedMito", filename="fine_tuned_sam2_2000.torch")
+            sam2_checkpoint = hf_hub_download(repo_id="rohitmalavathu/SAM2FineTunedMito", filename="sam2_hiera_small.pt")
+            model_cfg = "sam2_hiera_s.yaml"
+        except Exception as e:
+            print(f"Error downloading model files: {e}")
+            # Fallback to standard SAM2 model
+            try:
+                sam2_checkpoint = hf_hub_download(repo_id="facebook/sam2-hiera_small", filename="sam2_hiera_small.pt")
+                model_cfg = "sam2_hiera_s.yaml"
+                FINE_TUNED_MODEL_WEIGHTS = None
+            except Exception as e2:
+                print(f"Error downloading standard model: {e2}")
+                return False
         
         sam2_model = build_sam2(model_cfg, sam2_checkpoint, device="cpu")
         predictor = SAM2ImagePredictor(sam2_model)
-        predictor.model.load_state_dict(torch.load(FINE_TUNED_MODEL_WEIGHTS, map_location=torch.device('cpu'), weights_only=False))
+        
+        # Load fine-tuned weights if available
+        if FINE_TUNED_MODEL_WEIGHTS:
+            try:
+                predictor.model.load_state_dict(torch.load(FINE_TUNED_MODEL_WEIGHTS, map_location=torch.device('cpu'), weights_only=False))
+                print("Fine-tuned weights loaded successfully!")
+            except Exception as e:
+                print(f"Warning: Could not load fine-tuned weights: {e}")
+                print("Using standard SAM2 model")
         
         model_loaded = True
         print("Model loaded successfully!")
