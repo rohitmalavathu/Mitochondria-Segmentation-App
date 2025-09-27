@@ -524,124 +524,13 @@
                 const file = event.target.files[0];
                 if (!file) return;
 
-                // Check file size (100MB limit)
-                const maxSize = 100 * 1024 * 1024; // 100MB in bytes
-                const fileSizeMB = (file.size / (1024 * 1024)).toFixed(1);
-                
-                if (file.size > maxSize) {
-                    alert(`File too large! Your file is ${fileSizeMB}MB, but the maximum size is 100MB.\n\nPlease compress your TIFF file using:\n- ImageJ/Fiji (File > Export > PNG)\n- Photoshop (Save As > PNG)\n- Online tools like tinypng.com\n- Or reduce the resolution`);
-                    return;
-                }
-                
-                console.log(`File size: ${fileSizeMB}MB`);
+            console.log(`File size: ${(file.size / (1024 * 1024)).toFixed(1)}MB`);
 
-                // If it's a TIFF file, try to compress it client-side
-                if (file.name.toLowerCase().endsWith('.tif') || file.name.toLowerCase().endsWith('.tiff')) {
-                    console.log('TIFF file detected, attempting client-side compression...');
-                    try {
-                        const compressedFile = await this.compressTiffFile(file);
-                        await this.uploadFile(compressedFile);
-                    } catch (error) {
-                        console.error('Client-side compression failed, trying original file:', error);
-                        await this.uploadFile(file);
-                    }
-                } else {
-                    await this.uploadFile(file);
-                }
+                await this.uploadFile(file);
             }
 
-            async compressTiffFile(file) {
-                // For TIFF files, we'll skip client-side compression and let the server handle it
-                // since browsers don't natively support TIFF
-                console.log('Skipping client-side compression for TIFF (browser limitation)');
-                return file;
-            }
-
-            async uploadFileInChunks(file) {
-                const chunkSize = 5 * 1024 * 1024; // 5MB chunks
-                const totalChunks = Math.ceil(file.size / chunkSize);
-                const fileName = file.name;
-                const fileId = Math.random().toString(36).substring(7);
-
-                console.log(`Uploading ${fileName} in ${totalChunks} chunks of ${chunkSize / (1024 * 1024)}MB each`);
-
-                try {
-                    // Upload chunks
-                    for (let i = 0; i < totalChunks; i++) {
-                        const start = i * chunkSize;
-                        const end = Math.min(start + chunkSize, file.size);
-                        const chunk = file.slice(start, end);
-
-                        const formData = new FormData();
-                        formData.append('chunk', chunk);
-                        formData.append('chunkIndex', i);
-                        formData.append('totalChunks', totalChunks);
-                        formData.append('fileName', fileName);
-                        formData.append('fileId', fileId);
-
-                        console.log(`Uploading chunk ${i + 1}/${totalChunks}`);
-
-                        const response = await fetch('/upload-chunk', {
-                            method: 'POST',
-                            body: formData
-                        });
-
-                        if (!response.ok) {
-                            throw new Error(`Chunk ${i + 1} upload failed: ${response.status}`);
-                        }
-                    }
-
-                    // Assemble chunks on server
-                    console.log('All chunks uploaded, assembling file...');
-                    const assembleResponse = await fetch('/assemble-chunks', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            fileId: fileId,
-                            fileName: fileName,
-                            totalChunks: totalChunks
-                        })
-                    });
-
-                    const data = await assembleResponse.json();
-                    
-                    if (data.success) {
-                        this.currentImage = data.image;
-                        this.currentFilename = data.filename;
-                        this.originalImageSize = data.original_shape;
-                        this.displayImageSize = data.display_shape;
-                        this.scaleFactor = data.scale_factor;
-                        this.imageOffset = data.image_offset;
-                        
-                        // Display the image
-                        const img = new Image();
-                        img.onload = () => {
-                            this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-                            this.ctx.drawImage(img, this.imageOffset.x, this.imageOffset.y, this.displayImageSize[1], this.displayImageSize[0]);
-                        };
-                        img.src = `data:image/png;base64,${this.currentImage}`;
-                        
-                        this.updateResults('');
-                        console.log('File uploaded and assembled successfully!');
-                    } else {
-                        throw new Error(data.error || 'Failed to assemble file');
-                    }
-
-                } catch (error) {
-                    console.error('Chunked upload failed:', error);
-                    alert(`Upload failed: ${error.message}`);
-                }
-            }
 
             async uploadFile(file) {
-                // For large files, try chunked upload
-                if (file.size > 10 * 1024 * 1024) { // 10MB
-                    console.log('Large file detected, trying chunked upload...');
-                    return await this.uploadFileInChunks(file);
-                }
-
                 const formData = new FormData();
                 formData.append('file', file);
 
@@ -655,19 +544,16 @@
                     
                     if (data.success) {
                         this.currentImage = data.image;
-                        this.currentFilename = data.filename; // Use server-generated filename
-                        this.imageScaling = {
-                            scale_factor: data.scale_factor,
-                            image_offset: data.image_offset,
-                            image_size: data.image_size
-                        };
-                        this.loadImageToCanvas(data.image);
-                        this.clearAll();
-                        this.processBtn.disabled = false;
-                        console.log('Image uploaded successfully:', data.filename);
-                        console.log('Image scaling info:', this.imageScaling);
+                        this.currentFilename = data.filename;
+                        this.originalImageSize = data.original_shape;
+                        this.displayImageSize = data.display_shape;
+                        this.scaleFactor = data.scale_factor;
+                        this.imageOffset = data.image_offset;
+                        this.displayImage();
+                        this.updateResults('');
+                        console.log('File uploaded successfully!');
                     } else {
-                        alert('Error uploading image: ' + data.error);
+                        throw new Error(data.error || 'Upload failed');
                     }
                 } catch (error) {
                     alert('Error uploading image: ' + error.message);
