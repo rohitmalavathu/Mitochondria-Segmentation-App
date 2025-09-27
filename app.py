@@ -6,8 +6,8 @@ import cv2
 import numpy as np
 from PIL import Image
 from scipy.ndimage import gaussian_filter
-import torch
-from huggingface_hub import hf_hub_download
+# import torch
+# from huggingface_hub import hf_hub_download
 
 app = Flask(__name__)
 
@@ -44,24 +44,11 @@ def load_model():
             model_loaded = True
             return True
         
-        # Try to load model weights
-        try:
-            # Use a smaller, more reliable model
-            sam2_checkpoint = hf_hub_download(repo_id="facebook/sam2-hiera_small", filename="sam2_hiera_small.pt")
-            model_cfg = "sam2_hiera_s.yaml"
-            
-            sam2_model = build_sam2(model_cfg, sam2_checkpoint, device="cpu")
-            predictor = SAM2ImagePredictor(sam2_model)
-            
-            model_loaded = True
-            print("SAM2 model loaded successfully!")
-            return True
-            
-        except Exception as e:
-            print(f"Error loading SAM2 model: {e}")
-            model_loading_error = f"SAM2 model loading failed: {str(e)} - using mock mode"
-            model_loaded = True
-            return True
+        # For now, skip SAM2 model loading due to deployment complexity
+        print("SAM2 model loading disabled for deployment - using mock mode")
+        model_loading_error = "SAM2 model loading disabled for deployment - using mock mode"
+        model_loaded = True
+        return True
             
     except Exception as e:
         print(f"Unexpected error during model loading: {e}")
