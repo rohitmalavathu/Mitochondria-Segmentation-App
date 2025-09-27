@@ -531,6 +531,12 @@
 
 
             async uploadFile(file) {
+                // For large files, try chunked upload
+                if (file.size > 10 * 1024 * 1024) { // 10MB
+                    console.log('Large file detected, trying chunked upload...');
+                    return await this.uploadFileInChunks(file);
+                }
+
                 const formData = new FormData();
                 formData.append('file', file);
 
@@ -540,28 +546,75 @@
                         body: formData
                     });
 
-                    let data;
-                    const responseText = await response.text();
-                    console.log('Response status:', response.status);
-                    console.log('Response headers:', Object.fromEntries(response.headers.entries()));
-                    console.log('Raw response text length:', responseText.length);
-                    console.log('Response text preview:', responseText.substring(0, 500));
+                    const data = await response.json();
                     
-                    if (!response.ok) {
-                        console.error('Server returned error status:', response.status);
-                        console.log('Error response:', responseText);
-                        throw new Error(`Server error: ${response.status} - ${responseText.substring(0, 200)}`);
+                    if (data.success) {
+                        this.currentImage = data.image;
+                        this.currentFilename = data.filename;
+                        this.originalImageSize = data.original_shape;
+                        this.displayImageSize = data.display_shape;
+                        this.scaleFactor = data.scale_factor;
+                        this.imageOffset = data.image_offset;
+                        this.displayImage();
+                        this.updateResults('');
+                        console.log('File uploaded successfully!');
+                    } else {
+                        throw new Error(data.error || 'Upload failed');
                     }
-                    
-                    try {
-                        data = JSON.parse(responseText);
-                        console.log('Upload response data:', data);
-                        console.log('Response keys:', Object.keys(data));
-                    } catch (jsonError) {
-                        console.error('JSON parsing error:', jsonError);
-                        console.log('Full response text:', responseText);
-                        throw new Error('Invalid response format from server');
+                } catch (error) {
+                    alert('Error uploading image: ' + error.message);
+                }
+            }
+
+            async uploadFileInChunks(file) {
+                const chunkSize = 5 * 1024 * 1024; // 5MB chunks
+                const totalChunks = Math.ceil(file.size / chunkSize);
+                const fileName = file.name;
+                const fileId = Math.random().toString(36).substring(7);
+
+                console.log(`Uploading ${fileName} in ${totalChunks} chunks of ${chunkSize / (1024 * 1024)}MB each`);
+
+                try {
+                    // Upload chunks
+                    for (let i = 0; i < totalChunks; i++) {
+                        const start = i * chunkSize;
+                        const end = Math.min(start + chunkSize, file.size);
+                        const chunk = file.slice(start, end);
+
+                        const formData = new FormData();
+                        formData.append('chunk', chunk);
+                        formData.append('chunkIndex', i);
+                        formData.append('totalChunks', totalChunks);
+                        formData.append('fileName', fileName);
+                        formData.append('fileId', fileId);
+
+                        console.log(`Uploading chunk ${i + 1}/${totalChunks}`);
+
+                        const response = await fetch('/upload-chunk', {
+                            method: 'POST',
+                            body: formData
+                        });
+
+                        if (!response.ok) {
+                            throw new Error(`Chunk ${i + 1} upload failed: ${response.status}`);
+                        }
                     }
+
+                    // Assemble chunks on server
+                    console.log('All chunks uploaded, assembling file...');
+                    const assembleResponse = await fetch('/assemble-chunks', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            fileId: fileId,
+                            fileName: fileName,
+                            totalChunks: totalChunks
+                        })
+                    });
+
+                    const data = await assembleResponse.json();
                     
                     if (data.success) {
                         this.currentImage = data.image;
@@ -572,31 +625,38 @@
                         this.imageOffset = data.image_offset;
                         
                         // Display the image
-                        console.log('Displaying image...');
-                        console.log('Image offset:', this.imageOffset);
-                        console.log('Display image size:', this.displayImageSize);
-                        console.log('Image data length:', this.currentImage ? this.currentImage.length : 'undefined');
-                        
                         const img = new Image();
                         img.onload = () => {
-                            console.log('Image loaded successfully');
                             this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
                             this.ctx.drawImage(img, this.imageOffset.x, this.imageOffset.y, this.displayImageSize[1], this.displayImageSize[0]);
-                            console.log('Image drawn to canvas');
-                        };
-                        img.onerror = (error) => {
-                            console.error('Image load error:', error);
-                            throw new Error('Failed to load image data');
                         };
                         img.src = `data:image/png;base64,${this.currentImage}`;
                         
                         this.results.style.display = 'none';
-                        console.log('File uploaded successfully!');
+                        console.log('File uploaded and assembled successfully!');
                     } else {
-                        throw new Error(data.error || 'Upload failed');
+                        throw new Error(data.error || 'Failed to assemble file');
                     }
+
                 } catch (error) {
-                    alert('Error uploading image: ' + error.message);
+                    console.error('Chunked upload failed:', error);
+                    alert(`Upload failed: ${error.message}`);
+                }
+            }
+
+            displayImage() {
+                const img = new Image();
+                img.onload = () => {
+                    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                    this.ctx.drawImage(img, this.imageOffset.x, this.imageOffset.y, this.displayImageSize[1], this.displayImageSize[0]);
+                };
+                img.src = `data:image/png;base64,${this.currentImage}`;
+            }
+
+            updateResults(content) {
+                this.results.style.display = content ? 'block' : 'none';
+                if (content) {
+                    this.resultsContent.innerHTML = content;
                 }
             }
 

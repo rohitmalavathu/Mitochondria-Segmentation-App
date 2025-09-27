@@ -184,9 +184,130 @@ def process_segmentation(image, boxes, scale_ratio=None):
     
     return results
 
+# Store for chunked uploads
+chunk_storage = {}
+
 @app.route('/')
 def index():
     return render_template('index.html')
+
+@app.route('/upload-chunk', methods=['POST'])
+def upload_chunk():
+    try:
+        chunk = request.files['chunk']
+        chunk_index = int(request.form['chunkIndex'])
+        total_chunks = int(request.form['totalChunks'])
+        file_name = request.form['fileName']
+        file_id = request.form['fileId']
+        
+        if file_id not in chunk_storage:
+            chunk_storage[file_id] = {
+                'chunks': {},
+                'total_chunks': total_chunks,
+                'file_name': file_name
+            }
+        
+        # Store chunk
+        chunk_storage[file_id]['chunks'][chunk_index] = chunk.read()
+        
+        print(f"Received chunk {chunk_index + 1}/{total_chunks} for file {file_name}")
+        
+        return jsonify({'success': True, 'chunk': chunk_index + 1})
+        
+    except Exception as e:
+        print(f"Error uploading chunk: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/assemble-chunks', methods=['POST'])
+def assemble_chunks():
+    try:
+        data = request.get_json()
+        file_id = data['fileId']
+        file_name = data['fileName']
+        total_chunks = data['totalChunks']
+        
+        if file_id not in chunk_storage:
+            return jsonify({'error': 'File not found'}), 404
+        
+        stored_data = chunk_storage[file_id]
+        
+        # Check if all chunks are received
+        if len(stored_data['chunks']) != total_chunks:
+            return jsonify({'error': f'Missing chunks. Received {len(stored_data["chunks"])}/{total_chunks}'}), 400
+        
+        # Assemble file
+        import uuid
+        file_extension = os.path.splitext(file_name)[1]
+        filename = f"{uuid.uuid4()}{file_extension}"
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        
+        with open(filepath, 'wb') as f:
+            for i in range(total_chunks):
+                f.write(stored_data['chunks'][i])
+        
+        print(f"Assembled file: {filename} ({os.path.getsize(filepath)} bytes)")
+        
+        # Process the assembled file (same as regular upload)
+        try:
+            # Load and process image
+            image = cv2.imread(filepath)
+            if image is None:
+                # Try with PIL for TIFF and other formats
+                try:
+                    pil_image = Image.open(filepath)
+                    if pil_image.mode != 'RGB':
+                        pil_image = pil_image.convert('RGB')
+                    image = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
+                except Exception as e:
+                    return jsonify({'error': 'Invalid image file'}), 400
+            
+            # Convert to RGB
+            image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            
+            # Calculate scaling
+            canvas_size = 1024
+            original_height, original_width = image_rgb.shape[:2]
+            scale_factor = min(canvas_size / original_width, canvas_size / original_height)
+            new_width = int(original_width * scale_factor)
+            new_height = int(original_height * scale_factor)
+            
+            # Resize image
+            display_image = cv2.resize(image_rgb, (new_width, new_height))
+            
+            # Create canvas
+            canvas_image = np.zeros((canvas_size, canvas_size, 3), dtype=np.uint8)
+            start_x = (canvas_size - new_width) // 2
+            start_y = (canvas_size - new_height) // 2
+            canvas_image[start_y:start_y + new_height, start_x:start_x + new_width] = display_image
+            display_image = canvas_image
+            
+            # Encode image
+            pil_image = Image.fromarray(display_image)
+            buffer = BytesIO()
+            pil_image.save(buffer, format='PNG')
+            img_str = base64.b64encode(buffer.getvalue()).decode()
+            
+            # Clean up
+            del chunk_storage[file_id]
+            
+            return jsonify({
+                'success': True,
+                'image': img_str,
+                'original_shape': image.shape,
+                'display_shape': display_image.shape,
+                'filename': filename,
+                'scale_factor': scale_factor,
+                'image_offset': {'x': start_x, 'y': start_y},
+                'image_size': {'width': new_width, 'height': new_height}
+            })
+            
+        except Exception as e:
+            print(f"Error processing assembled file: {e}")
+            return jsonify({'error': f'Error processing file: {str(e)}'}), 500
+            
+    except Exception as e:
+        print(f"Error assembling chunks: {e}")
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/upload', methods=['POST'])
@@ -195,139 +316,31 @@ def upload_file():
         # Clean up old files before processing new upload
         cleanup_old_uploads()
         
-        print(f"Content-Length header: {request.headers.get('Content-Length', 'Not set')}")
-        print(f"Content-Type header: {request.headers.get('Content-Type', 'Not set')}")
-        print(f"Request method: {request.method}")
-        print(f"Request content length: {request.content_length}")
-        print(f"Request files keys: {list(request.files.keys())}")
-        print(f"Request form keys: {list(request.form.keys())}")
-        
         if 'file' not in request.files:
-            print("ERROR: No file in request.files")
             return jsonify({'error': 'No file provided'}), 400
         
         file = request.files['file']
-        print(f"File received: {file.filename}, content type: {file.content_type}")
-        print(f"File size: {file.content_length if hasattr(file, 'content_length') else 'Unknown'}")
-        print(f"File stream: {file.stream}")
-        print(f"File read position: {file.stream.tell() if hasattr(file.stream, 'tell') else 'N/A'}")
-        
         if file.filename == '':
-            print("ERROR: Empty filename")
             return jsonify({'error': 'No file selected'}), 400
         
-        # Check if filename has valid characters (more permissive)
-        import re
-        if not re.match(r'^[a-zA-Z0-9._\s-]+$', file.filename):
-            print(f"ERROR: Invalid filename characters: {file.filename}")
-            return jsonify({'error': 'Invalid filename characters'}), 400
+        # Generate a unique filename to avoid conflicts
+        import uuid
+        file_extension = os.path.splitext(file.filename)[1]
+        filename = f"{uuid.uuid4()}{file_extension}"
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(filepath)
         
-        # Try to secure the filename to see if that's causing issues
-        try:
-            secure_name = secure_filename(file.filename)
-            print(f"Secure filename: {secure_name}")
-            if not secure_name:
-                print("ERROR: secure_filename returned empty string")
-                return jsonify({'error': 'Invalid filename format'}), 400
-        except Exception as e:
-            print(f"ERROR with secure_filename: {e}")
-            return jsonify({'error': f'Filename validation failed: {str(e)}'}), 400
-        
-        # Check file extension
-        file_extension = os.path.splitext(file.filename)[1].lower()
-        allowed_extensions = ['.png', '.jpg', '.jpeg', '.tif', '.tiff']
-        if file_extension not in allowed_extensions:
-            print(f"ERROR: Unsupported file extension: {file_extension}")
-            return jsonify({'error': f'Unsupported file extension: {file_extension}. Allowed: {", ".join(allowed_extensions)}'}), 400
-        
-        if file:
-            # Generate a unique filename to avoid conflicts
-            import uuid
-            filename = f"{uuid.uuid4()}{file_extension}"
-            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-            
+        # Load and process image
+        image = cv2.imread(filepath)
+        if image is None:
+            # Try with PIL for TIFF and other formats that OpenCV might not support
             try:
-                print(f"Saving file to: {filepath}")
-                print(f"File extension: {file_extension}")
-                print(f"Is TIFF file: {file_extension.lower() in ['.tif', '.tiff']}")
-                file.save(filepath)
-                print(f"File saved successfully: {filename}")
-                
-                # Check if file was actually saved
-                if os.path.exists(filepath):
-                    file_size = os.path.getsize(filepath)
-                    print(f"Saved file size: {file_size} bytes")
-                else:
-                    print("ERROR: File was not saved!")
-                    return jsonify({'error': 'File was not saved'}), 500
-                    
+                pil_image = Image.open(filepath)
+                if pil_image.mode != 'RGB':
+                    pil_image = pil_image.convert('RGB')
+                image = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
             except Exception as e:
-                print(f"ERROR saving file: {e}")
-                import traceback
-                traceback.print_exc()
-                return jsonify({'error': f'Failed to save file: {str(e)}'}), 500
-            
-            # Load and process image
-            print(f"Attempting to load image with OpenCV: {filepath}")
-            image = cv2.imread(filepath)
-            print(f"OpenCV load result: {image is not None}")
-            
-            if image is None:
-                print("OpenCV failed to load image, trying PIL...")
-                # Try with PIL for TIFF and other formats that OpenCV might not support
-                try:
-                    print(f"Opening with PIL: {filepath}")
-                    pil_image = Image.open(filepath)
-                    print(f"PIL loaded image: {file.filename}, mode: {pil_image.mode}, size: {pil_image.size}")
-                    print(f"PIL image format: {pil_image.format}")
-                    
-                    # If it's a TIFF file, convert to PNG to reduce file size
-                    if file_extension.lower() in ['.tif', '.tiff']:
-                        print("Converting TIFF to PNG to reduce file size...")
-                        print(f"Original PIL image mode: {pil_image.mode}")
-                        
-                        # Convert to RGB if needed
-                        if pil_image.mode != 'RGB':
-                            print(f"Converting from {pil_image.mode} to RGB")
-                            pil_image = pil_image.convert('RGB')
-                            print(f"Converted to RGB, new mode: {pil_image.mode}")
-                        
-                        # Save as PNG temporarily
-                        png_filename = filename.replace(file_extension, '.png')
-                        png_filepath = os.path.join(app.config['UPLOAD_FOLDER'], png_filename)
-                        print(f"Saving PNG to: {png_filepath}")
-                        
-                        try:
-                            pil_image.save(png_filepath, 'PNG', optimize=True)
-                            print(f"PNG saved successfully: {png_filename}")
-                            
-                            # Check PNG file size
-                            if os.path.exists(png_filepath):
-                                png_size = os.path.getsize(png_filepath)
-                                print(f"PNG file size: {png_size} bytes")
-                            
-                        except Exception as e:
-                            print(f"ERROR saving PNG: {e}")
-                            import traceback
-                            traceback.print_exc()
-                            return jsonify({'error': f'Failed to convert TIFF to PNG: {str(e)}'}), 500
-                        
-                        # Clean up original TIFF file
-                        try:
-                            os.remove(filepath)
-                            print(f"Removed original TIFF file: {filename}")
-                        except Exception as e:
-                            print(f"Warning: Could not remove original TIFF file: {e}")
-                        
-                        # Update filepath to use the PNG version
-                        filepath = png_filepath
-                        filename = png_filename
-                        print(f"Converted TIFF to PNG: {png_filename}")
-                    
-                    # Convert PIL image to OpenCV format
-                    image = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
-                except Exception as e:
-                    return jsonify({'error': 'Invalid image file. Supported formats: PNG, JPG, JPEG, TIFF'}), 400
+                return jsonify({'error': 'Invalid image file'}), 400
         
         # Convert to RGB
         image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
@@ -359,24 +372,14 @@ def upload_file():
         
         # Encode image for frontend
         try:
-            print(f"Creating PIL image from array, shape: {display_image.shape}")
             pil_image = Image.fromarray(display_image)
-            print(f"PIL image created, mode: {pil_image.mode}, size: {pil_image.size}")
-            
             buffer = BytesIO()
             pil_image.save(buffer, format='PNG')
-            print(f"Image saved to buffer, buffer size: {buffer.tell()}")
-            
             img_str = base64.b64encode(buffer.getvalue()).decode()
-            print(f"Image encoded to base64, length: {len(img_str)}")
-            print(f"Successfully encoded image for frontend")
         except Exception as e:
-            print(f"Error encoding image: {e}")
-            import traceback
-            traceback.print_exc()
             return jsonify({'error': 'Error encoding image for display'}), 500
         
-        response_data = {
+        return jsonify({
             'success': True,
             'image': img_str,
             'original_shape': image.shape,
@@ -385,20 +388,7 @@ def upload_file():
             'scale_factor': scale_factor,
             'image_offset': {'x': start_x, 'y': start_y},
             'image_size': {'width': new_width, 'height': new_height}
-        }
-        
-        print(f"Creating JSON response with keys: {list(response_data.keys())}")
-        print(f"Image data length in response: {len(response_data['image'])}")
-        
-        try:
-            response = jsonify(response_data)
-            print(f"JSON response created successfully")
-            return response
-        except Exception as e:
-            print(f"Error creating JSON response: {e}")
-            import traceback
-            traceback.print_exc()
-            return jsonify({'error': 'Error creating response'}), 500
+        })
     
     except Exception as e:
         print(f"ERROR in upload_file: {e}")
