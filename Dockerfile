@@ -1,39 +1,24 @@
-# Use Python 3.9 slim image
-FROM python:3.9-slim
+# Use the official Python image as a base
+FROM python:3.9-slim-buster
 
-# Set working directory
+# Set the working directory in the container
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    libglib2.0-0 \
-    libsm6 \
-    libxext6 \
-    libxrender-dev \
-    libgomp1 \
-    libglib2.0-0 \
-    libgl1-mesa-glx \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy requirements first for better caching
+# Copy requirements and install Python dependencies
 COPY requirements.txt .
-
-# Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the application code
-COPY . .
+COPY app.py .
 
-# Create uploads directory
+# Create the uploads directory
 RUN mkdir -p uploads
 
-# Expose port
+# Expose the port the app runs on
 EXPOSE 8080
 
-# Set environment variables
-ENV PORT=8080
+# Set the FLASK_APP environment variable
 ENV FLASK_APP=app.py
-ENV FLASK_ENV=production
 
-# Run the application
-CMD exec gunicorn --bind :$PORT --workers 1 --threads 8 --timeout 0 app:app
+# Run the application using Gunicorn
+CMD ["gunicorn", "--bind", "0.0.0.0:8080", "app:app"]
