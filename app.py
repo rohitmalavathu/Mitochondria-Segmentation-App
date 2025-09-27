@@ -16,14 +16,14 @@ import time
 import glob
 
 app = Flask(__name__)
-app.config['MAX_CONTENT_LENGTH'] = 2 * 1024 * 1024 * 1024  # 2GB max file size
+app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB max file size
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0  # Disable caching for large files
 
 # Error handler for file too large
 @app.errorhandler(413)
 def too_large(e):
-    return jsonify({'error': 'File too large. Maximum size is 2GB. Please compress your image or use a smaller file.'}), 413
+    return jsonify({'error': 'File too large. Maximum size is 100MB. Please compress your image or use a smaller file.'}), 413
 
 # Create upload directory if it doesn't exist
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
