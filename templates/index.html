@@ -1082,6 +1082,10 @@
                         this.manualSegments.push(manualSegment);
                         this.undoStack.push({type: 'manual', index: this.manualSegments.length - 1});
                         this.showNotification(`Manual segmentation added! Area: ${area.toFixed(0)} pixels`, 'success');
+                        
+                        // Update canvas and results immediately
+                        this.redrawCanvas();
+                        this.updateManualSegmentsDisplay();
                     }
                     this.currentManualPath = [];
                     this.isManualDrawing = false;
@@ -1384,31 +1388,8 @@
                     this.resultsContent.appendChild(resultDiv);
                 });
                 
-                // Display manual segments
-                if (this.manualSegments.length > 0) {
-                    const manualHeader = document.createElement('div');
-                    manualHeader.className = 'result-section-header';
-                    manualHeader.innerHTML = '<h4>Manual Segments</h4>';
-                    this.resultsContent.appendChild(manualHeader);
-                    
-                    this.manualSegments.forEach((segment, index) => {
-                        const resultDiv = document.createElement('div');
-                        resultDiv.className = 'result-item manual-segment';
-                        
-                        const areaText = segment.area ? 
-                            `${segment.area.toFixed(0)} pixels` :
-                            'Area not calculated';
-                        
-                        resultDiv.innerHTML = `
-                            <div class="box-info">
-                                <span class="box-id">Manual ${index + 1}</span>
-                                <span class="area-info">${areaText}</span>
-                            </div>
-                            <div>Hand-drawn boundary</div>
-                        `;
-                        this.resultsContent.appendChild(resultDiv);
-                    });
-                }
+                // Display manual segments using the dedicated function
+                this.updateManualSegmentsDisplay();
             }
 
             drawSegmentationContours() {
@@ -1504,6 +1485,43 @@
                 });
             }
 
+            updateManualSegmentsDisplay() {
+                // Update the results panel to include manual segments
+                if (this.manualSegments.length > 0) {
+                    // Check if manual segments section already exists
+                    let manualSection = document.querySelector('.manual-segments-section');
+                    if (!manualSection) {
+                        manualSection = document.createElement('div');
+                        manualSection.className = 'manual-segments-section';
+                        manualSection.innerHTML = '<h4>Manual Segments</h4>';
+                        this.resultsContent.appendChild(manualSection);
+                    }
+                    
+                    // Clear existing manual segment items
+                    const existingItems = manualSection.querySelectorAll('.manual-segment-item');
+                    existingItems.forEach(item => item.remove());
+                    
+                    // Add manual segments
+                    this.manualSegments.forEach((segment, index) => {
+                        const resultDiv = document.createElement('div');
+                        resultDiv.className = 'result-item manual-segment-item';
+                        
+                        const areaText = segment.area ? 
+                            `${segment.area.toFixed(0)} pixels` :
+                            'Area not calculated';
+                        
+                        resultDiv.innerHTML = `
+                            <div class="box-info">
+                                <span class="box-id">Manual ${index + 1}</span>
+                                <span class="area-info">${areaText}</span>
+                            </div>
+                            <div>Hand-drawn boundary</div>
+                        `;
+                        manualSection.appendChild(resultDiv);
+                    });
+                }
+            }
+
             clearAll() {
                 this.boxes = [];
                 this.scaleLine = null;
@@ -1568,6 +1586,7 @@
                         if (lastOperation.index < this.manualSegments.length) {
                             this.manualSegments.splice(lastOperation.index, 1);
                             this.redrawCanvas();
+                            this.updateManualSegmentsDisplay();
                             console.log(`Undid manual segment ${lastOperation.index + 1}`);
                         }
                         break;
