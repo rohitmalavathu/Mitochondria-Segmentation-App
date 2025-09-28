@@ -1065,9 +1065,23 @@
                 } else if (this.mode === 'manual') {
                     // Complete the manual segmentation path
                     if (this.currentManualPath.length > 2) {
-                        this.manualSegments.push([...this.currentManualPath]);
+                        // Close the shape by connecting to start point
+                        const closedPath = [...this.currentManualPath];
+                        closedPath.push({x: this.currentManualPath[0].x, y: this.currentManualPath[0].y});
+                        
+                        // Calculate area using shoelace formula
+                        const area = this.calculatePolygonArea(closedPath);
+                        
+                        // Create manual segment object with area
+                        const manualSegment = {
+                            path: closedPath,
+                            area: area,
+                            id: this.manualSegments.length
+                        };
+                        
+                        this.manualSegments.push(manualSegment);
                         this.undoStack.push({type: 'manual', index: this.manualSegments.length - 1});
-                        this.showNotification('Manual segmentation added!', 'success');
+                        this.showNotification(`Manual segmentation added! Area: ${area.toFixed(0)} pixels`, 'success');
                     }
                     this.currentManualPath = [];
                     this.isManualDrawing = false;
@@ -1369,6 +1383,32 @@
                     
                     this.resultsContent.appendChild(resultDiv);
                 });
+                
+                // Display manual segments
+                if (this.manualSegments.length > 0) {
+                    const manualHeader = document.createElement('div');
+                    manualHeader.className = 'result-section-header';
+                    manualHeader.innerHTML = '<h4>Manual Segments</h4>';
+                    this.resultsContent.appendChild(manualHeader);
+                    
+                    this.manualSegments.forEach((segment, index) => {
+                        const resultDiv = document.createElement('div');
+                        resultDiv.className = 'result-item manual-segment';
+                        
+                        const areaText = segment.area ? 
+                            `${segment.area.toFixed(0)} pixels` :
+                            'Area not calculated';
+                        
+                        resultDiv.innerHTML = `
+                            <div class="box-info">
+                                <span class="box-id">Manual ${index + 1}</span>
+                                <span class="area-info">${areaText}</span>
+                            </div>
+                            <div>Hand-drawn boundary</div>
+                        `;
+                        this.resultsContent.appendChild(resultDiv);
+                    });
+                }
             }
 
             drawSegmentationContours() {
@@ -1524,6 +1564,13 @@
                             console.log(`Undid vesicle from neuron ${lastOperation.neuron}`);
                         }
                         break;
+                    case 'manual':
+                        if (lastOperation.index < this.manualSegments.length) {
+                            this.manualSegments.splice(lastOperation.index, 1);
+                            this.redrawCanvas();
+                            console.log(`Undid manual segment ${lastOperation.index + 1}`);
+                        }
+                        break;
                 }
                 
                 this.redrawCanvas();
@@ -1572,23 +1619,34 @@
                 });
             }
             
+            calculatePolygonArea(points) {
+                // Shoelace formula for polygon area
+                let area = 0;
+                for (let i = 0; i < points.length - 1; i++) {
+                    area += points[i].x * points[i + 1].y;
+                    area -= points[i + 1].x * points[i].y;
+                }
+                return Math.abs(area) / 2;
+            }
+            
             drawManualSegments() {
                 this.ctx.strokeStyle = '#ff00ff';
                 this.ctx.lineWidth = 3;
                 this.ctx.setLineDash([]);
                 this.manualSegments.forEach((segment, index) => {
-                    if (segment.length > 1) {
+                    if (segment.path && segment.path.length > 1) {
                         this.ctx.beginPath();
-                        this.ctx.moveTo(segment[0].x, segment[0].y);
-                        for (let i = 1; i < segment.length; i++) {
-                            this.ctx.lineTo(segment[i].x, segment[i].y);
+                        this.ctx.moveTo(segment.path[0].x, segment.path[0].y);
+                        for (let i = 1; i < segment.path.length; i++) {
+                            this.ctx.lineTo(segment.path[i].x, segment.path[i].y);
                         }
                         this.ctx.stroke();
                         
-                        // Draw segment number
+                        // Draw segment number and area
                         this.ctx.fillStyle = '#ff00ff';
                         this.ctx.font = '12px Arial';
-                        this.ctx.fillText(`M${index + 1}`, segment[0].x + 5, segment[0].y - 5);
+                        const areaText = segment.area ? `M${index + 1}: ${segment.area.toFixed(0)}px²` : `M${index + 1}`;
+                        this.ctx.fillText(areaText, segment.path[0].x + 5, segment.path[0].y - 5);
                     }
                 });
             }
