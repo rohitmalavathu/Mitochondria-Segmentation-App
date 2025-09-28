@@ -820,6 +820,48 @@
                 this.progressFill.style.width = `${progress}%`;
             }
             
+            showProgressIndicator(message, progress) {
+                // Remove existing progress indicator
+                const existing = document.getElementById('progress-indicator');
+                if (existing) {
+                    existing.remove();
+                }
+                
+                // Create small progress indicator
+                const indicator = document.createElement('div');
+                indicator.id = 'progress-indicator';
+                indicator.innerHTML = `
+                    <div style="
+                        position: fixed;
+                        top: 20px;
+                        left: 20px;
+                        background: #2196F3;
+                        color: white;
+                        padding: 10px 15px;
+                        border-radius: 5px;
+                        box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+                        z-index: 10000;
+                        font-size: 12px;
+                        min-width: 200px;
+                        animation: slideIn 0.3s ease-out;
+                    ">
+                        <div style="margin-bottom: 5px;">${message}</div>
+                        <div style="background: rgba(255,255,255,0.3); height: 4px; border-radius: 2px; overflow: hidden;">
+                            <div style="background: white; height: 100%; width: ${progress}%; transition: width 0.3s ease;"></div>
+                        </div>
+                    </div>
+                `;
+                
+                document.body.appendChild(indicator);
+            }
+            
+            hideProgressIndicator() {
+                const indicator = document.getElementById('progress-indicator');
+                if (indicator) {
+                    indicator.remove();
+                }
+            }
+            
             showNotification(message, type = 'info') {
                 // Create notification element
                 const notification = document.createElement('div');
@@ -1159,7 +1201,7 @@
                 }
                 
                 this.isProcessing = true;
-                this.showLoading('Processing segmentation...', 0);
+                this.showProgressIndicator('Processing segmentation...', 0);
                 this.processBtn.disabled = true;
                 this.processBtn.textContent = 'Processing...';
                 
@@ -1180,7 +1222,7 @@
                         height: box.y2 - box.y1
                     })));
                     
-                    this.updateLoadingProgress('Sending data to server...', 20);
+                    this.showProgressIndicator('Sending data to server...', 20);
                     
                     const response = await fetch('/process', {
                         method: 'POST',
@@ -1197,13 +1239,16 @@
                         })
                     });
                     
-                    this.updateLoadingProgress('Running AI segmentation...', 60);
+                    this.showProgressIndicator('Running AI segmentation...', 60);
                     
                     // Add progress simulation for better UX
                     const progressInterval = setInterval(() => {
-                        const currentProgress = parseInt(this.loadingProgress.textContent);
-                        if (currentProgress < 90) {
-                            this.updateLoadingProgress('Processing with SAM2...', currentProgress + 2);
+                        const indicator = document.getElementById('progress-indicator');
+                        if (indicator) {
+                            const currentProgress = parseInt(indicator.querySelector('div[style*="width:"]').style.width);
+                            if (currentProgress < 90) {
+                                this.showProgressIndicator('Processing with SAM2...', currentProgress + 2);
+                            }
                         }
                     }, 1000);
                     
@@ -1213,7 +1258,7 @@
                     
                     if (data.success) {
                         clearInterval(progressInterval); // Stop progress simulation
-                        this.updateLoadingProgress('Processing results...', 90);
+                        this.showProgressIndicator('Processing results...', 90);
                         
                         console.log('Segmentation results received:', data.results);
                         console.log('Results type:', typeof data.results);
@@ -1222,8 +1267,8 @@
                         
                         this.displayResults(data.results);
                         
-                        this.updateLoadingProgress('Complete!', 100);
-                        setTimeout(() => this.hideLoading(), 500);
+                        this.showProgressIndicator('Complete!', 100);
+                        setTimeout(() => this.hideProgressIndicator(), 1000);
                         
                         // Show notification that segmentation is complete
                         this.showNotification('Segmentation complete! Results are ready.', 'success');
@@ -1233,7 +1278,7 @@
                     }
                 } catch (error) {
                     clearInterval(progressInterval); // Stop progress simulation on error
-                    this.hideLoading();
+                    this.hideProgressIndicator();
                     console.error('Error processing segmentation:', error);
                     alert('Error processing segmentation: ' + error.message);
                 } finally {
