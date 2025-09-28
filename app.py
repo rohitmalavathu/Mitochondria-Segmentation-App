@@ -388,19 +388,39 @@ def upload_file():
         # Convert to RGB
         image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         
+        # Auto-resize image to 512x512 for faster processing
+        original_height, original_width = image_rgb.shape[:2]
+        print(f"Original image size: {original_width}x{original_height}")
+        
+        # Resize to 512x512 while maintaining aspect ratio
+        target_size = 512
+        if original_width != target_size or original_height != target_size:
+            # Calculate scaling factor to fit within 512x512
+            scale_factor = min(target_size / original_width, target_size / original_height)
+            new_width = int(original_width * scale_factor)
+            new_height = int(original_height * scale_factor)
+            
+            # Resize image
+            image_rgb = cv2.resize(image_rgb, (new_width, new_height), interpolation=cv2.INTER_AREA)
+            print(f"Resized image to: {new_width}x{new_height} (scale: {scale_factor:.3f})")
+            
+            # Update the saved file with resized image
+            image_bgr = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR)
+            cv2.imwrite(filepath, image_bgr)
+        
         # Calculate scaling to fit canvas while maintaining aspect ratio
         canvas_size = 1024
-        original_height, original_width = image_rgb.shape[:2]
+        current_height, current_width = image_rgb.shape[:2]
         
         # Calculate scale factor to fit image in canvas
-        scale_factor = min(canvas_size / original_width, canvas_size / original_height)
+        scale_factor = min(canvas_size / current_width, canvas_size / current_height)
         
-        # Calculate new dimensions
-        new_width = int(original_width * scale_factor)
-        new_height = int(original_height * scale_factor)
+        # Calculate new dimensions for canvas display
+        display_width = int(current_width * scale_factor)
+        display_height = int(current_height * scale_factor)
         
         # Resize image maintaining aspect ratio
-        display_image = cv2.resize(image_rgb, (new_width, new_height))
+        display_image = cv2.resize(image_rgb, (display_width, display_height))
         
         # Create a canvas-sized image with the resized image centered
         canvas_image = np.zeros((canvas_size, canvas_size, 3), dtype=np.uint8)
@@ -425,12 +445,12 @@ def upload_file():
         return jsonify({
             'success': True,
             'image': img_str,
-            'original_shape': image.shape,
+            'original_shape': (current_height, current_width, 3),  # Current resized dimensions
             'display_shape': display_image.shape,
             'filename': filename,
             'scale_factor': scale_factor,
             'image_offset': {'x': start_x, 'y': start_y},
-            'image_size': {'width': new_width, 'height': new_height}
+            'image_size': {'width': display_width, 'height': display_height}
         })
     
     except Exception as e:
