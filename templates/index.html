@@ -1069,12 +1069,16 @@
                         const closedPath = [...this.currentManualPath];
                         closedPath.push({x: this.currentManualPath[0].x, y: this.currentManualPath[0].y});
                         
-                        // Calculate area using shoelace formula
-                        const area = this.calculatePolygonArea(closedPath);
+                        // Convert display coordinates to original image coordinates
+                        const originalPath = this.convertDisplayToOriginalCoordinates(closedPath);
+                        
+                        // Calculate area using shoelace formula in original coordinates
+                        const area = this.calculatePolygonArea(originalPath);
                         
                         // Calculate scaled area if scale ratio is available
                         let scaledArea = null;
                         if (this.scaleRatio) {
+                            // scaleRatio is pixels per nm, so area_pixels / (pixels_per_nm)² = nm²
                             scaledArea = area / (this.scaleRatio * this.scaleRatio);
                         }
                         
@@ -1546,8 +1550,14 @@
                 // Update scaling for existing manual segments when scale ratio is set
                 if (this.scaleRatio && this.manualSegments.length > 0) {
                     this.manualSegments.forEach(segment => {
-                        if (segment.area && !segment.scaledArea) {
-                            segment.scaledArea = segment.area / (this.scaleRatio * this.scaleRatio);
+                        if (segment.path && !segment.scaledArea) {
+                            // Convert display coordinates to original coordinates
+                            const originalPath = this.convertDisplayToOriginalCoordinates(segment.path);
+                            // Recalculate area in original coordinates
+                            const originalArea = this.calculatePolygonArea(originalPath);
+                            // Update the area and calculate scaled area
+                            segment.area = originalArea;
+                            segment.scaledArea = originalArea / (this.scaleRatio * this.scaleRatio);
                         }
                     });
                     this.redrawCanvas();
@@ -1669,6 +1679,22 @@
                         this.ctx.fillText(`${index + 1}`, vesicle.x + 6, vesicle.y - 6);
                     });
                 });
+            }
+            
+            convertDisplayToOriginalCoordinates(displayPoints) {
+                // Convert display coordinates to original image coordinates
+                if (!this.imageScaling) {
+                    console.warn('No image scaling data available, using display coordinates');
+                    return displayPoints;
+                }
+                
+                const { scale_factor, image_offset } = this.imageScaling;
+                const { x: offsetX, y: offsetY } = image_offset;
+                
+                return displayPoints.map(point => ({
+                    x: (point.x - offsetX) / scale_factor,
+                    y: (point.y - offsetY) / scale_factor
+                }));
             }
             
             calculatePolygonArea(points) {
