@@ -647,6 +647,21 @@
                         this.displayImageSize = data.display_shape;
                         this.scaleFactor = data.scale_factor;
                         this.imageOffset = data.image_offset;
+                        
+                        // Set up image scaling for coordinate conversions
+                        this.imageScaling = {
+                            scale_factor: data.scale_factor,
+                            image_offset: data.image_offset,
+                            image_size: {
+                                width: data.display_shape[1],
+                                height: data.display_shape[0]
+                            },
+                            original_size: {
+                                width: data.original_shape[1],
+                                height: data.original_shape[0]
+                            }
+                        };
+                        
                         this.displayImage();
                         this.updateResults('');
                         
@@ -731,6 +746,20 @@
                         this.displayImageSize = data.display_shape;
                         this.scaleFactor = data.scale_factor;
                         this.imageOffset = data.image_offset;
+                        
+                        // Set up image scaling for coordinate conversions
+                        this.imageScaling = {
+                            scale_factor: data.scale_factor,
+                            image_offset: data.image_offset,
+                            image_size: {
+                                width: data.display_shape[1],
+                                height: data.display_shape[0]
+                            },
+                            original_size: {
+                                width: data.original_shape[1],
+                                height: data.original_shape[0]
+                            }
+                        };
                         
                         // Display the image
                         const img = new Image();
@@ -971,25 +1000,11 @@
                 if (!this.scaleLine) return;
                 
                 try {
-                    // Convert the line length from display coordinates to original image coordinates
-                    let actualLineLength = this.scaleLine.length;
-                    
-                    // If we have image scaling info, we need to account for the scaling
-                    if (this.imageScaling) {
-                        // The line is drawn on the 512x512 display, but we need to scale it to original image size
-                        const scaleFactor = this.imageScaling.scale_factor;
-                        actualLineLength = this.scaleLine.length / scaleFactor;
-                        console.log('Scale line conversion:', {
-                            displayLength: this.scaleLine.length,
-                            scaleFactor: scaleFactor,
-                            actualLength: actualLineLength,
-                            imageSize: this.imageScaling.image_size,
-                            originalImageSize: {
-                                width: this.imageScaling.image_size.width / scaleFactor,
-                                height: this.imageScaling.image_size.height / scaleFactor
-                            }
-                        });
-                    }
+                    // Send the display line length and image scaling info to backend
+                    console.log('Calculating scale with:', {
+                        displayLength: this.scaleLine.length,
+                        imageScaling: this.imageScaling
+                    });
                     
                     const response = await fetch('/calculate_scale', {
                         method: 'POST',
@@ -997,7 +1012,8 @@
                             'Content-Type': 'application/json',
                         },
                         body: JSON.stringify({
-                            line_length_pixels: actualLineLength
+                            line_length_pixels: this.scaleLine.length,
+                            image_scaling: this.imageScaling
                         })
                     });
                     
@@ -1191,13 +1207,13 @@
             }
 
             drawSegmentationContours() {
-                console.log('drawSegmentationContours called');
+                console.log('drawSegmentationContours called - drawing SAM2 segmentation boundaries');
                 console.log('segmentationResults:', this.segmentationResults);
                 console.log('segmentationResults type:', typeof this.segmentationResults);
                 console.log('segmentationResults length:', this.segmentationResults ? this.segmentationResults.length : 'undefined');
                 
                 if (!this.segmentationResults) {
-                    console.log('No segmentation results to draw');
+                    console.log('No SAM2 segmentation results to draw');
                     return;
                 }
                 
@@ -1206,18 +1222,18 @@
                     return;
                 }
                 
-                console.log('Drawing segmentation contours for', this.segmentationResults.length, 'results');
+                console.log('Drawing SAM2 segmentation boundaries for', this.segmentationResults.length, 'results');
                 
-                // Draw segmentation contours
-                this.ctx.strokeStyle = '#ff00ff'; // Magenta color for segmentation borders
+                // Draw SAM2 segmentation boundaries
+                this.ctx.strokeStyle = '#ff00ff'; // Magenta color for SAM2 segmentation boundaries
                 this.ctx.lineWidth = 2;
                 this.ctx.setLineDash([]);
                 
                 this.segmentationResults.forEach((result, resultIndex) => {
-                    console.log(`Processing result ${resultIndex}:`, result);
+                    console.log(`Processing SAM2 result ${resultIndex}:`, result);
                     if (result.contours && result.contours.length > 0) {
-                        console.log(`Drawing contours for box ${result.box_id}:`, {
-                            contours_count: result.contours.length
+                        console.log(`Drawing SAM2 segmentation boundaries for box ${result.box_id}:`, {
+                            boundaries_count: result.contours.length
                         });
                         
                         // The contours are in full image coordinates

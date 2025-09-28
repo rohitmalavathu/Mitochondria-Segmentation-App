@@ -177,22 +177,22 @@ def process_segmentation(image, boxes, scale_ratio=None):
         # Convert pixels to nm²: area_pixels / (pixels_per_nm)²
         area_nm2 = area_pixels / (scale_ratio ** 2) if scale_ratio else area_pixels
         
-        # Find contours for outline
+        # Find boundaries of SAM2 segmentation for display
         segmentation_255 = segmentation_resized * 255
         contours, _ = cv2.findContours(segmentation_255, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         
-        # Convert contours to list for JSON serialization
-        # Adjust contours to be relative to the full image coordinates
+        # Convert SAM2 segmentation boundaries to list for JSON serialization
+        # Adjust boundaries to be relative to the full image coordinates
         contour_points = []
         for contour in contours:
             if contour is not None and len(contour) > 0:
-                # Adjust contour points to be relative to the full image
+                # Adjust boundary points to be relative to the full image
                 adjusted_contour = contour.reshape(-1, 2) + [x1, y1]
                 contour_points.append(adjusted_contour.tolist())
         
-        print(f"Box {i}: Found {len(contour_points)} contours")
+        print(f"Box {i}: SAM2 found {len(contour_points)} segmentation boundaries")
         for j, contour in enumerate(contour_points):
-            print(f"  Contour {j}: {len(contour)} points")
+            print(f"  SAM2 boundary {j}: {len(contour)} points")
             if len(contour) > 0:
                 print(f"    First point: {contour[0]}")
                 print(f"    Last point: {contour[-1]}")
@@ -545,15 +545,26 @@ def process_boxes():
 def calculate_scale():
     data = request.get_json()
     line_length_pixels = data.get('line_length_pixels', 0)
+    image_scaling = data.get('image_scaling')
     reference_length_nm = 500  # 500nm reference line
     
     if line_length_pixels <= 0:
         return jsonify({'error': 'Invalid line length'}), 400
     
-    # Calculate pixels per nm: line_length_pixels / 500nm
-    scale_ratio = line_length_pixels / reference_length_nm  # pixels per nm
+    # If we have image scaling info, convert display coordinates to original image coordinates
+    if image_scaling:
+        scale_factor = image_scaling.get('scale_factor', 1.0)
+        # Convert from display coordinates to original image coordinates
+        actual_line_length = line_length_pixels / scale_factor
+        print(f"Scale conversion: display={line_length_pixels}px -> original={actual_line_length}px (factor={scale_factor})")
+    else:
+        actual_line_length = line_length_pixels
+        print(f"No image scaling info, using display length: {actual_line_length}px")
     
-    print(f"Scale calculation: line_length={line_length_pixels}px, reference={reference_length_nm}nm, pixels_per_nm={scale_ratio}")
+    # Calculate pixels per nm: actual_line_length / 500nm
+    scale_ratio = actual_line_length / reference_length_nm  # pixels per nm
+    
+    print(f"Scale calculation: line_length={actual_line_length}px, reference={reference_length_nm}nm, pixels_per_nm={scale_ratio}")
     
     return jsonify({
         'success': True,
