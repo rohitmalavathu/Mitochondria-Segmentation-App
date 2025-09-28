@@ -89,7 +89,6 @@ def load_model():
         sam2_model.eval()
         
         # Enable optimizations
-        import torch
         torch.backends.cudnn.benchmark = True
         torch.backends.cudnn.deterministic = False
         
