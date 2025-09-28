@@ -52,6 +52,43 @@ sam2_model = None
 predictor = None
 model_loaded = False
 
+# Image embedding cache
+image_embedding_cache = {}
+current_image_hash = None
+
+def compute_image_hash(image):
+    """Compute a hash for the image to use as cache key"""
+    return hashlib.md5(image.tobytes()).hexdigest()
+
+def get_cached_embedding(image, predictor):
+    """Get cached image embedding or compute and cache it"""
+    global current_image_hash, image_embedding_cache
+    
+    # Compute image hash
+    image_hash = compute_image_hash(image)
+    
+    # If same image, return cached embedding
+    if image_hash == current_image_hash and image_hash in image_embedding_cache:
+        print(f"Using cached image embedding for hash: {image_hash[:8]}...")
+        return image_embedding_cache[image_hash]
+    
+    # Compute new embedding
+    print(f"Computing new image embedding for hash: {image_hash[:8]}...")
+    predictor.set_image(image)
+    
+    # Cache the embedding (SAM2 stores it internally)
+    image_embedding_cache[image_hash] = True
+    current_image_hash = image_hash
+    
+    return True
+
+def clear_image_cache():
+    """Clear the image embedding cache"""
+    global current_image_hash, image_embedding_cache
+    current_image_hash = None
+    image_embedding_cache.clear()
+    print("Image embedding cache cleared")
+
 def load_model():
     """Load the SAM2 model and fine-tuned weights"""
     global sam2_model, predictor, model_loaded
@@ -159,12 +196,10 @@ def process_segmentation(image, boxes, scale_ratio=None):
         if cropped_image_resized.ndim == 2:
             cropped_image_resized = np.stack([cropped_image_resized] * 3, axis=-1)
         
-        # Process with SAM2 (optimized)
+        # Process with SAM2 (optimized with embedding cache)
         with torch.no_grad():
-            # Only set image if it's different from last one (optimization)
-            if i == 0 or not hasattr(predictor, '_last_image') or not np.array_equal(predictor._last_image, cropped_image_resized):
-                predictor.set_image(cropped_image_resized)
-                predictor._last_image = cropped_image_resized.copy()
+            # Use cached embedding for the same image
+            get_cached_embedding(cropped_image_resized, predictor)
             
             masks, scores, logits = predictor.predict(
                 point_coords=[[[128, 128]]],
@@ -264,6 +299,9 @@ def upload_chunk():
 @app.route('/assemble-chunks', methods=['POST'])
 def assemble_chunks():
     try:
+        # Clear image embedding cache for new image
+        clear_image_cache()
+        
         data = request.get_json()
         file_id = data['fileId']
         file_name = data['fileName']
@@ -358,6 +396,9 @@ def upload_file():
     try:
         # Clean up old files before processing new upload
         cleanup_old_uploads()
+        
+        # Clear image embedding cache for new image
+        clear_image_cache()
         
         if 'file' not in request.files:
             return jsonify({'error': 'No file provided'}), 400
