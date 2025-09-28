@@ -465,9 +465,11 @@ def process_boxes():
         print(f"Error parsing request data: {e}")
         return jsonify({'error': 'Invalid request data'}), 400
     
-    # Load model if not already loaded
-    if not load_model():
-        return jsonify({'error': 'Failed to load model'}), 500
+    # Check if model is loaded (should be loaded at startup)
+    if not model_loaded:
+        print("⚠️ Model not loaded, attempting to load now...")
+        if not load_model():
+            return jsonify({'error': 'Failed to load model'}), 500
     
     # Load original image
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
@@ -595,5 +597,15 @@ def calculate_scale():
     })
 
 if __name__ == '__main__':
+    # Load model at startup for faster first segmentation
+    print("🚀 Starting Mitochondria Segmentation App...")
+    print("📦 Loading SAM2 model...")
+    
+    if load_model():
+        print("✅ Model loaded successfully!")
+    else:
+        print("❌ Failed to load model - segmentation will not work")
+    
     port = int(os.environ.get('PORT', 9669))
+    print(f"🌐 Starting server on port {port}...")
     app.run(debug=False, host='0.0.0.0', port=port)
