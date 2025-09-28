@@ -52,6 +52,53 @@ sam2_model = None
 predictor = None
 model_loaded = False
 
+# Image embedding cache
+cached_image_embedding = None
+cached_image_hash = None
+
+def compute_image_hash(image):
+    """Compute a hash for the image to use as cache key"""
+    return hashlib.md5(image.tobytes()).hexdigest()
+
+def get_cached_image_embedding(image, predictor):
+    """Get cached image embedding or compute and cache it using PyTorch optimizations"""
+    global cached_image_embedding, cached_image_hash
+    
+    # Compute image hash
+    image_hash = compute_image_hash(image)
+    
+    # If same image, return cached embedding
+    if image_hash == cached_image_hash and cached_image_embedding is not None:
+        print(f"Using cached image embedding for hash: {image_hash[:8]}...")
+        return cached_image_embedding
+    
+    # Compute new embedding with PyTorch optimizations
+    print(f"Computing new image embedding for hash: {image_hash[:8]}...")
+    
+    # Convert image to tensor and move to device
+    if isinstance(image, np.ndarray):
+        image_tensor = torch.from_numpy(image).permute(2, 0, 1).unsqueeze(0).float()
+    else:
+        image_tensor = image
+    
+    # Use autocast and inference_mode for better performance
+    with torch.inference_mode(), torch.cuda.amp.autocast(device_type="cuda", dtype=torch.float16):
+        # Get image embedding from SAM2 model
+        image_embedding = predictor.model.image_encoder(image_tensor)
+    
+    # Cache the embedding
+    cached_image_embedding = image_embedding
+    cached_image_hash = image_hash
+    
+    return image_embedding
+
+def clear_image_cache():
+    """Clear the image embedding cache"""
+    global cached_image_embedding, cached_image_hash
+    cached_image_embedding = None
+    cached_image_hash = None
+    print("Image embedding cache cleared")
+
 
 def load_model():
     """Load the SAM2 model and fine-tuned weights"""
@@ -160,17 +207,23 @@ def process_segmentation(image, boxes, scale_ratio=None):
         if cropped_image_resized.ndim == 2:
             cropped_image_resized = np.stack([cropped_image_resized] * 3, axis=-1)
         
-        # Process with SAM2 (optimized)
+        # Process with SAM2 (optimized with proper embedding cache)
         with torch.no_grad():
-            # Only set image if it's different from last one (optimization)
-            if i == 0 or not hasattr(predictor, '_last_image') or not np.array_equal(predictor._last_image, cropped_image_resized):
-                predictor.set_image(cropped_image_resized)
-                predictor._last_image = cropped_image_resized.copy()
+            # Get cached image embedding or compute new one
+            image_embedding = get_cached_image_embedding(cropped_image_resized, predictor)
             
-            masks, scores, logits = predictor.predict(
-                point_coords=[[[128, 128]]],
-                point_labels=[[1]]
-            )
+            # Use the cached embedding for prediction
+            with torch.cuda.amp.autocast(device_type="cuda", dtype=torch.float16):
+                # Set the image embedding in predictor
+                predictor.features = image_embedding
+                predictor.original_size = cropped_image_resized.shape[:2]
+                predictor.input_size = (256, 256)
+                
+                # Predict masks using the cached embedding
+                masks, scores, logits = predictor.predict(
+                    point_coords=[[[128, 128]]],
+                    point_labels=[[1]]
+                )
         
         # Process masks
         sorted_masks = masks[np.argsort(scores)][::-1]
@@ -265,6 +318,9 @@ def upload_chunk():
 @app.route('/assemble-chunks', methods=['POST'])
 def assemble_chunks():
     try:
+        # Clear image embedding cache for new image
+        clear_image_cache()
+        
         data = request.get_json()
         file_id = data['fileId']
         file_name = data['fileName']
@@ -359,6 +415,9 @@ def upload_file():
     try:
         # Clean up old files before processing new upload
         cleanup_old_uploads()
+        
+        # Clear image embedding cache for new image
+        clear_image_cache()
         
         if 'file' not in request.files:
             return jsonify({'error': 'No file provided'}), 400
