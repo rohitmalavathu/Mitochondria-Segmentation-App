@@ -1,0 +1,15 @@
+[Unit]
+Description=Mitochondria Segmentation Flask App
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/workspace/MitochondriaSegmentation-main
+Environment=PATH=/usr/bin:/usr/local/bin
+ExecStart=/usr/bin/python3 app.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

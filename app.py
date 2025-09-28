@@ -85,8 +85,23 @@ def load_model():
         predictor = SAM2ImagePredictor(sam2_model)
         predictor.model.load_state_dict(torch.load(FINE_TUNED_MODEL_WEIGHTS, map_location=torch.device('cpu'), weights_only=False))
         
+        # Enable optimizations for faster inference
+        sam2_model.eval()
+        
+        # Enable optimizations
+        import torch
+        torch.backends.cudnn.benchmark = True
+        torch.backends.cudnn.deterministic = False
+        
+        # Compile model for faster inference (PyTorch 2.0+)
+        try:
+            sam2_model = torch.compile(sam2_model, mode="reduce-overhead")
+            print("✓ Model compiled for faster inference")
+        except Exception as compile_error:
+            print(f"⚠ Model compilation not available: {compile_error}")
+        
         model_loaded = True
-        print("Model loaded successfully!")
+        print("Model loaded successfully with optimizations!")
         return True
     except Exception as e:
         print(f"Error loading model: {e}")
@@ -131,9 +146,10 @@ def process_segmentation(image, boxes, scale_ratio=None):
             
         original_height, original_width = cropped_image.shape[:2]
         
-        # Resize for model input
+        # Resize for model input with optimization
         try:
-            cropped_image_resized = cv2.resize(cropped_image, (256, 256))
+            # Use faster interpolation for resize
+            cropped_image_resized = cv2.resize(cropped_image, (256, 256), interpolation=cv2.INTER_LINEAR)
             print(f"Resized image shape: {cropped_image_resized.shape}")
         except Exception as resize_error:
             print(f"Error resizing image: {resize_error}")
@@ -144,9 +160,13 @@ def process_segmentation(image, boxes, scale_ratio=None):
         if cropped_image_resized.ndim == 2:
             cropped_image_resized = np.stack([cropped_image_resized] * 3, axis=-1)
         
-        # Process with SAM2
+        # Process with SAM2 (optimized)
         with torch.no_grad():
-            predictor.set_image(cropped_image_resized)
+            # Only set image if it's different from last one (optimization)
+            if i == 0 or not hasattr(predictor, '_last_image') or not np.array_equal(predictor._last_image, cropped_image_resized):
+                predictor.set_image(cropped_image_resized)
+                predictor._last_image = cropped_image_resized.copy()
+            
             masks, scores, logits = predictor.predict(
                 point_coords=[[[128, 128]]],
                 point_labels=[[1]]

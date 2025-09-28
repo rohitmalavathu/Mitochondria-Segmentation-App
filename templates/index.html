@@ -1138,11 +1138,20 @@
                     
                     this.updateLoadingProgress('Running AI segmentation...', 60);
                     
+                    // Add progress simulation for better UX
+                    const progressInterval = setInterval(() => {
+                        const currentProgress = parseInt(this.loadingProgress.textContent);
+                        if (currentProgress < 90) {
+                            this.updateLoadingProgress('Processing with SAM2...', currentProgress + 2);
+                        }
+                    }, 1000);
+                    
                     console.log('Response status:', response.status);
                     const data = await response.json();
                     console.log('Response data:', data);
                     
                     if (data.success) {
+                        clearInterval(progressInterval); // Stop progress simulation
                         this.updateLoadingProgress('Processing results...', 90);
                         
                         console.log('Segmentation results received:', data.results);
@@ -1155,9 +1164,11 @@
                         this.updateLoadingProgress('Complete!', 100);
                         setTimeout(() => this.hideLoading(), 500);
                     } else {
+                        clearInterval(progressInterval); // Stop progress simulation
                         throw new Error(data.error || 'Segmentation failed');
                     }
                 } catch (error) {
+                    clearInterval(progressInterval); // Stop progress simulation on error
                     this.hideLoading();
                     console.error('Error processing segmentation:', error);
                     alert('Error processing segmentation: ' + error.message);
