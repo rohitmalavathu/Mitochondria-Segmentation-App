@@ -1072,10 +1072,17 @@
                         // Calculate area using shoelace formula
                         const area = this.calculatePolygonArea(closedPath);
                         
-                        // Create manual segment object with area
+                        // Calculate scaled area if scale ratio is available
+                        let scaledArea = null;
+                        if (this.scaleRatio) {
+                            scaledArea = area / (this.scaleRatio * this.scaleRatio);
+                        }
+                        
+                        // Create manual segment object with area and scaling
                         const manualSegment = {
                             path: closedPath,
                             area: area,
+                            scaledArea: scaledArea,
                             id: this.manualSegments.length
                         };
                         
@@ -1086,6 +1093,11 @@
                         // Update canvas and results immediately
                         this.redrawCanvas();
                         this.updateManualSegmentsDisplay();
+                        
+                        // Show results panel if it's not already visible
+                        if (this.results.style.display === 'none') {
+                            this.results.style.display = 'block';
+                        }
                     }
                     this.currentManualPath = [];
                     this.isManualDrawing = false;
@@ -1178,6 +1190,9 @@
                     if (data.success) {
                         this.scaleRatio = data.scale_ratio;
                         document.getElementById('scaleRatio').textContent = this.scaleRatio.toFixed(2);
+                        
+                        // Update scaling for existing manual segments
+                        this.updateManualSegmentsScaling();
                     }
                 } catch (error) {
                     console.error('Error calculating scale:', error);
@@ -1506,9 +1521,14 @@
                         const resultDiv = document.createElement('div');
                         resultDiv.className = 'result-item manual-segment-item';
                         
-                        const areaText = segment.area ? 
-                            `${segment.area.toFixed(0)} pixels` :
-                            'Area not calculated';
+                        let areaText = 'Area not calculated';
+                        if (segment.area) {
+                            if (segment.scaledArea) {
+                                areaText = `${segment.area.toFixed(0)} pixels (${segment.scaledArea.toFixed(2)} nm²)`;
+                            } else {
+                                areaText = `${segment.area.toFixed(0)} pixels`;
+                            }
+                        }
                         
                         resultDiv.innerHTML = `
                             <div class="box-info">
@@ -1519,6 +1539,19 @@
                         `;
                         manualSection.appendChild(resultDiv);
                     });
+                }
+            }
+            
+            updateManualSegmentsScaling() {
+                // Update scaling for existing manual segments when scale ratio is set
+                if (this.scaleRatio && this.manualSegments.length > 0) {
+                    this.manualSegments.forEach(segment => {
+                        if (segment.area && !segment.scaledArea) {
+                            segment.scaledArea = segment.area / (this.scaleRatio * this.scaleRatio);
+                        }
+                    });
+                    this.redrawCanvas();
+                    this.updateManualSegmentsDisplay();
                 }
             }
 
@@ -1664,7 +1697,14 @@
                         // Draw segment number and area
                         this.ctx.fillStyle = '#ff00ff';
                         this.ctx.font = '12px Arial';
-                        const areaText = segment.area ? `M${index + 1}: ${segment.area.toFixed(0)}px²` : `M${index + 1}`;
+                        let areaText = `M${index + 1}`;
+                        if (segment.area) {
+                            if (segment.scaledArea) {
+                                areaText = `M${index + 1}: ${segment.area.toFixed(0)}px² (${segment.scaledArea.toFixed(1)}nm²)`;
+                            } else {
+                                areaText = `M${index + 1}: ${segment.area.toFixed(0)}px²`;
+                            }
+                        }
                         this.ctx.fillText(areaText, segment.path[0].x + 5, segment.path[0].y - 5);
                     }
                 });
