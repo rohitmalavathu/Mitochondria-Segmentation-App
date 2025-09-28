@@ -557,6 +557,7 @@
                 this.startY = 0;
                 this.segmentationResults = null;
                 this.imageScaling = null;
+                this.isProcessing = false;
                 
                 this.initializeEventListeners();
             }
@@ -817,6 +818,58 @@
                 this.loadingText.textContent = text;
                 this.loadingProgress.textContent = `${Math.round(progress)}%`;
                 this.progressFill.style.width = `${progress}%`;
+            }
+            
+            showNotification(message, type = 'info') {
+                // Create notification element
+                const notification = document.createElement('div');
+                notification.className = `notification notification-${type}`;
+                notification.textContent = message;
+                
+                // Style the notification
+                notification.style.cssText = `
+                    position: fixed;
+                    top: 20px;
+                    right: 20px;
+                    background: ${type === 'success' ? '#4CAF50' : type === 'error' ? '#f44336' : '#2196F3'};
+                    color: white;
+                    padding: 15px 20px;
+                    border-radius: 5px;
+                    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+                    z-index: 10000;
+                    font-size: 14px;
+                    max-width: 300px;
+                    animation: slideIn 0.3s ease-out;
+                `;
+                
+                // Add animation keyframes
+                if (!document.getElementById('notification-styles')) {
+                    const style = document.createElement('style');
+                    style.id = 'notification-styles';
+                    style.textContent = `
+                        @keyframes slideIn {
+                            from { transform: translateX(100%); opacity: 0; }
+                            to { transform: translateX(0); opacity: 1; }
+                        }
+                        @keyframes slideOut {
+                            from { transform: translateX(0); opacity: 1; }
+                            to { transform: translateX(100%); opacity: 0; }
+                        }
+                    `;
+                    document.head.appendChild(style);
+                }
+                
+                document.body.appendChild(notification);
+                
+                // Auto-remove after 5 seconds
+                setTimeout(() => {
+                    notification.style.animation = 'slideOut 0.3s ease-in';
+                    setTimeout(() => {
+                        if (notification.parentNode) {
+                            notification.parentNode.removeChild(notification);
+                        }
+                    }, 300);
+                }, 5000);
             }
 
             loadImageToCanvas(imageData) {
@@ -1099,8 +1152,16 @@
                     return;
                 }
                 
+                // Check if already processing
+                if (this.isProcessing) {
+                    alert('Segmentation is already in progress. Please wait for it to complete.');
+                    return;
+                }
+                
+                this.isProcessing = true;
                 this.showLoading('Processing segmentation...', 0);
                 this.processBtn.disabled = true;
+                this.processBtn.textContent = 'Processing...';
                 
                 try {
                     console.log('Sending request with:', {
@@ -1163,6 +1224,9 @@
                         
                         this.updateLoadingProgress('Complete!', 100);
                         setTimeout(() => this.hideLoading(), 500);
+                        
+                        // Show notification that segmentation is complete
+                        this.showNotification('Segmentation complete! Results are ready.', 'success');
                     } else {
                         clearInterval(progressInterval); // Stop progress simulation
                         throw new Error(data.error || 'Segmentation failed');
@@ -1173,7 +1237,9 @@
                     console.error('Error processing segmentation:', error);
                     alert('Error processing segmentation: ' + error.message);
                 } finally {
+                    this.isProcessing = false;
                     this.processBtn.disabled = false;
+                    this.processBtn.textContent = 'Process Segmentation';
                 }
             }
 
