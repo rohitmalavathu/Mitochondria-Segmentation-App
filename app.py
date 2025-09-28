@@ -53,7 +53,6 @@ predictor = None
 model_loaded = False
 
 # Image embedding cache
-image_embedding_cache = {}
 current_image_hash = None
 
 def compute_image_hash(image):
@@ -62,31 +61,27 @@ def compute_image_hash(image):
 
 def get_cached_embedding(image, predictor):
     """Get cached image embedding or compute and cache it"""
-    global current_image_hash, image_embedding_cache
+    global current_image_hash
     
     # Compute image hash
     image_hash = compute_image_hash(image)
     
-    # If same image, return cached embedding
-    if image_hash == current_image_hash and image_hash in image_embedding_cache:
+    # If same image, skip set_image (SAM2 keeps the embedding internally)
+    if image_hash == current_image_hash:
         print(f"Using cached image embedding for hash: {image_hash[:8]}...")
-        return image_embedding_cache[image_hash]
+        return True
     
     # Compute new embedding
     print(f"Computing new image embedding for hash: {image_hash[:8]}...")
     predictor.set_image(image)
-    
-    # Cache the embedding (SAM2 stores it internally)
-    image_embedding_cache[image_hash] = True
     current_image_hash = image_hash
     
     return True
 
 def clear_image_cache():
     """Clear the image embedding cache"""
-    global current_image_hash, image_embedding_cache
+    global current_image_hash
     current_image_hash = None
-    image_embedding_cache.clear()
     print("Image embedding cache cleared")
 
 def load_model():
