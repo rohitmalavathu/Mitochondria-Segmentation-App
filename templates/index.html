@@ -436,6 +436,7 @@
                     <div class="mode-buttons">
                         <button class="mode-btn active" id="scaleMode">Scale Line</button>
                         <button class="mode-btn" id="boxMode">Draw Boxes</button>
+                        <button class="mode-btn" id="manualMode">Manual Segment</button>
                         <button class="mode-btn" id="psdMode">PSD Length</button>
                         <button class="mode-btn" id="vesicleMode">Vesicle Count</button>
                     </div>
@@ -445,6 +446,7 @@
                             <li><strong>Supported Formats:</strong> PNG, JPG, JPEG, TIFF (.tif, .tiff)</li>
                             <li><strong>Scale Line:</strong> Draw a 500nm reference line for accurate measurements</li>
                             <li><strong>Draw Boxes:</strong> Click and drag to create bounding boxes around mitochondria</li>
+                            <li><strong>Manual Segment:</strong> Draw precise segmentation boundaries by hand</li>
                             <li><strong>PSD Length:</strong> Draw a line across a PSD region to measure its width</li>
                             <li><strong>Vesicle Count:</strong> Click to place dots on presynaptic vesicles and organize by neurons</li>
                         </ul>
@@ -558,6 +560,9 @@
                 this.segmentationResults = null;
                 this.imageScaling = null;
                 this.isProcessing = false;
+                this.manualSegments = []; // Store manual segmentation paths
+                this.currentManualPath = []; // Current drawing path
+                this.isManualDrawing = false; // Whether currently drawing manually
                 
                 this.initializeEventListeners();
             }
@@ -565,6 +570,7 @@
             initializeEventListeners() {
                 // Mode buttons
                 document.getElementById('boxMode').addEventListener('click', () => this.setMode('box'));
+                document.getElementById('manualMode').addEventListener('click', () => this.setMode('manual'));
                 document.getElementById('scaleMode').addEventListener('click', () => this.setMode('scale'));
                 document.getElementById('psdMode').addEventListener('click', () => this.setMode('psd'));
                 document.getElementById('vesicleMode').addEventListener('click', () => this.setMode('vesicle'));
@@ -598,10 +604,16 @@
                 document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
                 document.getElementById(mode + 'Mode').classList.add('active');
                 
-                if (mode === 'vesicle') {
+                if (mode === 'vesicle' || mode === 'manual') {
                     this.canvas.style.cursor = 'crosshair';
                 } else {
                     this.canvas.style.cursor = 'crosshair';
+                }
+                
+                // Reset manual drawing state
+                if (mode !== 'manual') {
+                    this.isManualDrawing = false;
+                    this.currentManualPath = [];
                 }
             }
 
@@ -941,6 +953,12 @@
                 this.startX = (e.clientX - rect.left) * scaleX;
                 this.startY = (e.clientY - rect.top) * scaleY;
                 this.isDrawing = true;
+                
+                // Start manual drawing path
+                if (this.mode === 'manual') {
+                    this.isManualDrawing = true;
+                    this.currentManualPath = [{x: this.startX, y: this.startY}];
+                }
             }
 
             handleMouseMove(e) {
@@ -971,6 +989,19 @@
                     this.ctx.beginPath();
                     this.ctx.moveTo(this.startX, this.startY);
                     this.ctx.lineTo(currentX, currentY);
+                    this.ctx.stroke();
+                } else if (this.mode === 'manual') {
+                    // Add point to current path
+                    this.currentManualPath.push({x: currentX, y: currentY});
+                    
+                    // Draw the current path
+                    this.ctx.strokeStyle = '#ff00ff';
+                    this.ctx.lineWidth = 3;
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(this.currentManualPath[0].x, this.currentManualPath[0].y);
+                    for (let i = 1; i < this.currentManualPath.length; i++) {
+                        this.ctx.lineTo(this.currentManualPath[i].x, this.currentManualPath[i].y);
+                    }
                     this.ctx.stroke();
                 }
             }
@@ -1031,6 +1062,15 @@
                 } else if (this.mode === 'vesicle') {
                     // Add vesicle at click position
                     this.addVesicle(endX, endY);
+                } else if (this.mode === 'manual') {
+                    // Complete the manual segmentation path
+                    if (this.currentManualPath.length > 2) {
+                        this.manualSegments.push([...this.currentManualPath]);
+                        this.undoStack.push({type: 'manual', index: this.manualSegments.length - 1});
+                        this.showNotification('Manual segmentation added!', 'success');
+                    }
+                    this.currentManualPath = [];
+                    this.isManualDrawing = false;
                 }
             }
 
@@ -1082,6 +1122,9 @@
                     
                     // Draw vesicles
                     this.drawVesicles();
+                    
+                    // Draw manual segments
+                    this.drawManualSegments();
                     
                     // Draw segmentation contours if they exist
                     if (this.segmentationResults) {
@@ -1427,6 +1470,7 @@
                 this.scaleRatio = null;
                 this.psdLines = [];
                 this.vesicles = {};
+                this.manualSegments = [];
                 this.currentNeuron = 1;
                 this.vesicleIdCounter = 0;
                 this.undoStack = [];
@@ -1525,6 +1569,27 @@
                         this.ctx.font = '10px Arial';
                         this.ctx.fillText(`${index + 1}`, vesicle.x + 6, vesicle.y - 6);
                     });
+                });
+            }
+            
+            drawManualSegments() {
+                this.ctx.strokeStyle = '#ff00ff';
+                this.ctx.lineWidth = 3;
+                this.ctx.setLineDash([]);
+                this.manualSegments.forEach((segment, index) => {
+                    if (segment.length > 1) {
+                        this.ctx.beginPath();
+                        this.ctx.moveTo(segment[0].x, segment[0].y);
+                        for (let i = 1; i < segment.length; i++) {
+                            this.ctx.lineTo(segment[i].x, segment[i].y);
+                        }
+                        this.ctx.stroke();
+                        
+                        // Draw segment number
+                        this.ctx.fillStyle = '#ff00ff';
+                        this.ctx.font = '12px Arial';
+                        this.ctx.fillText(`M${index + 1}`, segment[0].x + 5, segment[0].y - 5);
+                    }
                 });
             }
 
