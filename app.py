@@ -426,11 +426,11 @@ def upload_file():
         canvas_image = np.zeros((canvas_size, canvas_size, 3), dtype=np.uint8)
         
         # Calculate position to center the image
-        start_x = (canvas_size - new_width) // 2
-        start_y = (canvas_size - new_height) // 2
+        start_x = (canvas_size - display_width) // 2
+        start_y = (canvas_size - display_height) // 2
         
         # Place the resized image on the canvas
-        canvas_image[start_y:start_y + new_height, start_x:start_x + new_width] = display_image
+        canvas_image[start_y:start_y + display_height, start_x:start_x + display_width] = display_image
         display_image = canvas_image
         
         # Encode image for frontend
