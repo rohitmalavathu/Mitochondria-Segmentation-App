@@ -679,8 +679,8 @@
             }
 
             async uploadFileInChunks(file) {
-                const chunkSize = Math.ceil(file.size / 4); // 4 chunks total
-                const totalChunks = 4;
+                const chunkSize = file.size; // 1 chunk - entire file
+                const totalChunks = 1;
                 const fileName = file.name;
                 const fileId = Math.random().toString(36).substring(7);
 
@@ -689,10 +689,10 @@
                 this.showLoading('Preparing chunked upload...', 0);
 
                 try {
-                    // Upload chunks
+                    // Upload single chunk
                     for (let i = 0; i < totalChunks; i++) {
-                        const progress = Math.round((i / totalChunks) * 70); // 0-70% for chunk upload
-                        this.updateLoadingProgress(`Uploading chunk ${i + 1}/${totalChunks}...`, progress);
+                        const progress = Math.round((i / totalChunks) * 80); // 0-80% for single chunk upload
+                        this.updateLoadingProgress(`Uploading file...`, progress);
                         
                         const start = i * chunkSize;
                         const end = Math.min(start + chunkSize, file.size);
@@ -717,9 +717,9 @@
                         }
                     }
 
-                    // Assemble chunks on server
-                    this.updateLoadingProgress('Assembling file on server...', 75);
-                    console.log('All chunks uploaded, assembling file...');
+                    // Process single chunk on server
+                    this.updateLoadingProgress('Processing file on server...', 85);
+                    console.log('File uploaded, processing...');
                     
                     const assembleResponse = await fetch('/assemble-chunks', {
                         method: 'POST',
